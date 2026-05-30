@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(firebase --version)",
+      "Bash(eas --version)",
+      "Bash(convert --version)",
+      "Bash(python3 -c \"from PIL import Image; print\\('pillow ok'\\)\")",
+      "Bash(node -e \"require\\('sharp'\\)\")",
+      "Bash(git -C /Users/razr/Documents/Dadboard log --oneline -5)",
+      "Bash(python3 -c \"from PIL import Image; print\\('Pillow: OK'\\)\")",
+      "Bash(python3 -c \"import struct, zlib, base64; print\\('stdlib OK'\\)\")",
+      "Bash(npm list *)",
+      "Bash(python3 *)"
+    ]
+  }
+}

@@ -1,0 +1,122 @@
+// firebase/firestore.rules
+// Dadboard — Firestore Security Rules v2
+// Deploy: firebase deploy --only firestore:rules
+//
+// Security model:
+//   - Every read/write requires a valid Firebase Auth session
+//   - Users can only access their own family's data
+//   - Parents have elevated permissions (add members, delete requests)
+//   - Kids can only create requests attributed to themselves
+//   - No anonymous user can access any family data (anon = guest/local mode only)
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isAuthed() {
+      return request.auth != null && !request.auth.token.firebase.sign_in_provider.matches('anonymous');
+    }
+
+    function isMember(familyId) {
+      return isAuthed() &&
+        exists(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid));
+    }
+
+    function isParent(familyId) {
+      return isAuthed() &&
+        get(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)).data.role == 'parent';
+    }
+
+    function isOwner(uid) {
+      return isAuthed() && request.auth.uid == uid;
+    }
+
+    function isValidRequest() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['type', 'fromId', 'fromName', 'status', 'createdAt'])
+        && d.type in ['pickup', 'buy', 'other']
+        && d.status == 'pending'
+        && d.fromId is string
+        && d.fromName is string
+        && d.createdAt is timestamp;
+    }
+
+    function isValidMember() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['name', 'role', 'uid'])
+        && d.role in ['parent', 'kid']
+        && d.name is string
+        && d.uid is string;
+    }
+
+    // Only the status field is being changed (for tap-to-update)
+    function onlyStatusChange() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+
+    // ── User profiles ─────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Families ──────────────────────────────────────────────────────────────
+    match /families/{familyId} {
+
+      allow read: if isMember(familyId);
+
+      allow create: if isAuthed()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['familyName', 'ownerUid', 'createdAt']);
+
+      allow update: if isParent(familyId);
+
+      allow delete: if isParent(familyId);
+
+      // ── Members ─────────────────────────────────────────────────────────────
+      match /members/{memberId} {
+        allow read: if isMember(familyId);
+
+        // Parent adds members, or a new user creating their own member doc when joining
+        allow create: if isParent(familyId)
+          || (isAuthed() && memberId == request.auth.uid && isValidMember());
+
+        // Parent can edit any member; member can only update their own
+        allow update: if isParent(familyId)
+          || (isMember(familyId) && isOwner(memberId));
+
+        allow delete: if isParent(familyId);
+      }
+
+      // ── Requests ─────────────────────────────────────────────────────────────
+      match /requests/{requestId} {
+        allow read: if isMember(familyId);
+
+        // Any member can create a request — but fromId must match their own uid
+        allow create: if isMember(familyId)
+          && isValidRequest()
+          && request.resource.data.fromId == request.auth.uid;
+
+        // Any member can update just the status (tap done/on my way)
+        // Creator or parent can update any field
+        allow update: if isMember(familyId) && (
+          onlyStatusChange()
+          || resource.data.fromId == request.auth.uid
+          || isParent(familyId)
+        );
+
+        allow delete: if isMember(familyId) && (
+          resource.data.fromId == request.auth.uid
+          || isParent(familyId)
+        );
+      }
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

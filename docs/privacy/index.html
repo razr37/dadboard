@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Dadboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #fff;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+    header { border-bottom: 3px solid #F07C2A; padding-bottom: 24px; margin-bottom: 40px; }
+    header h1 { font-size: 2rem; font-weight: 800; color: #F07C2A; }
+    header p { color: #555; margin-top: 6px; font-size: 0.95rem; }
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #111;
+      margin: 36px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #eee;
+    }
+    p, li { font-size: 0.97rem; color: #333; }
+    ul { padding-left: 20px; margin: 10px 0; }
+    li { margin: 6px 0; }
+    a { color: #F07C2A; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .callout {
+      background: #fff8f2;
+      border-left: 4px solid #F07C2A;
+      border-radius: 4px;
+      padding: 14px 18px;
+      margin: 18px 0;
+      font-size: 0.95rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 0.93rem;
+    }
+    th, td { text-align: left; padding: 10px 12px; border: 1px solid #e0e0e0; }
+    th { background: #fafafa; font-weight: 600; }
+    footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid #eee; font-size: 0.85rem; color: #777; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Dadboard — Privacy Policy</h1>
+  <p>Effective date: 30 May 2026 &nbsp;|&nbsp; Last updated: 30 May 2026</p>
+</header>
+
+<div class="callout">
+  <strong>Short version:</strong> Dadboard is a family coordination app. We store only what your family enters — names, schedules, and meal plans. We never sell data, run ads, or track you across apps. You can delete everything at any time inside the app.
+</div>
+
+<h2>1. Who We Are</h2>
+<p>
+  Dadboard ("the app", "we", "our") is a personal family coordination tool. It is operated by an individual developer. If you have questions about this policy, email us at
+  <a href="mailto:razr73@gmail.com">razr73@gmail.com</a>.
+</p>
+
+<h2>2. What Data We Collect and Why</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Data</th>
+      <th>Why we collect it</th>
+      <th>Where it is stored</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Email address</td>
+      <td>Account creation and login (parent/guardian only)</td>
+      <td>Firebase Authentication (Google)</td>
+    </tr>
+    <tr>
+      <td>Family name, parent name</td>
+      <td>Identify the family account</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+    <tr>
+      <td>Children's first names</td>
+      <td>Display kid profiles; route requests to the right child</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+    <tr>
+      <td>Pickup requests (date, time, location, description)</td>
+      <td>Core app function — kids submit requests, parent sees them</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+    <tr>
+      <td>Shopping requests (item name, urgency)</td>
+      <td>Core app function</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+    <tr>
+      <td>Meal attendance (lunch/dinner toggles per day)</td>
+      <td>Weekly meal planning; notifies parent</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+    <tr>
+      <td>Push notification token (device identifier)</td>
+      <td>Send request notifications to parent's device</td>
+      <td>Cloud Firestore (Google)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  <strong>Guest mode (no account):</strong> If you choose "Try it free", the app uses anonymous Firebase Auth and stores all data only on your device via AsyncStorage. No personal information reaches our servers.
+</p>
+
+<h2>3. Data We Do NOT Collect</h2>
+<ul>
+  <li>Location data (the location field in pickup requests is free text you type — we never access your device's GPS)</li>
+  <li>Contacts, photos, camera, or microphone</li>
+  <li>Advertising identifiers or cross-app tracking data</li>
+  <li>Analytics or crash reporting beyond Firebase defaults</li>
+  <li>Payment or financial information</li>
+</ul>
+
+<h2>4. Third-Party Services</h2>
+<p>We use the following sub-processors to operate the app:</p>
+<ul>
+  <li>
+    <strong>Google Firebase</strong> (Firebase Authentication, Cloud Firestore) — data stored in the <em>asia-southeast1</em> (Singapore) region.
+    <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Privacy Policy</a>
+  </li>
+  <li>
+    <strong>Expo Push Notification Service</strong> — relays notifications from our server to your device. Expo does not store notification content.
+    <a href="https://expo.dev/privacy" target="_blank" rel="noopener">Expo Privacy Policy</a>
+  </li>
+</ul>
+<p>We do not share your data with any other third party.</p>
+
+<h2>5. Data Retention</h2>
+<p>
+  Your data is retained for as long as your account is active. When you delete your account (via Settings → Privacy → Delete all data), we permanently erase:
+</p>
+<ul>
+  <li>All family members, requests, and meal plans from Firestore</li>
+  <li>Your Firebase Authentication account</li>
+</ul>
+<p>Deletion is irreversible and takes effect immediately.</p>
+
+<h2>6. Children's Privacy</h2>
+<p>
+  Dadboard is designed to be used <strong>by a parent or guardian on behalf of their children</strong>. Children's names entered in the app are provided by the parent/guardian. We do not knowingly collect information directly from children under 13 (or the applicable age in your jurisdiction) without parental consent. If you believe we have inadvertently collected such information, please contact us and we will delete it promptly.
+</p>
+
+<h2>7. Your Rights</h2>
+<p>Depending on your location, you may have rights under:</p>
+<ul>
+  <li><strong>Singapore PDPA</strong> — access, correction, and withdrawal of consent</li>
+  <li><strong>EU/UK GDPR</strong> — access, rectification, erasure, restriction, portability, and objection</li>
+</ul>
+<p>
+  You can exercise all of these rights directly inside the app (Settings → Privacy) or by emailing <a href="mailto:razr73@gmail.com">razr73@gmail.com</a>. We will respond within 30 days.
+</p>
+
+<h2>8. Security</h2>
+<p>
+  All data in transit is encrypted via TLS. Firestore data is encrypted at rest by Google. Access is gated by Firebase Auth — only authenticated family members can read or write their own family's data. Security rules are deployed to enforce per-family data isolation.
+</p>
+
+<h2>9. Changes to This Policy</h2>
+<p>
+  If we make material changes to this policy, we will update the effective date above and notify users via an in-app banner on next launch.
+</p>
+
+<h2>10. Contact</h2>
+<p>
+  Questions or requests: <a href="mailto:razr73@gmail.com">razr73@gmail.com</a>
+</p>
+
+<footer>
+  &copy; 2026 Dadboard. All rights reserved.
+</footer>
+
+</body>
+</html>
