@@ -35,7 +35,7 @@ The app has two operating modes controlled entirely by `AppContext` (`src/contex
 - **Guest mode** — anonymous Firebase Auth, all data in AsyncStorage. Activated when user picks "Try it free" or when `familyId` is absent after auth. Starts with `SEED_FAMILY` / `SEED_REQUESTS` demo data.
 - **Sync mode** — email/password Firebase Auth + a Firestore `familyId`. All mutations go to Firestore; real-time listeners keep state current across devices.
 
-Every public method on `AppContext` routes to the right backend automatically based on `isSynced && familyId`. Do not bypass this — write new operations the same way. The full public API:
+Every public method on `AppContext` routes to the right backend automatically via the `isSynced && familyId` guard. Do not bypass this — write new operations the same way. The full public API:
 
 | Method | Description |
 |---|---|
@@ -50,14 +50,14 @@ Every public method on `AppContext` routes to the right backend automatically ba
 
 ### Firebase SDK
 
-The app uses **`@react-native-firebase`** (v20, native module), NOT the web `@firebase/app` SDK. This is why Expo Go can't run it — a native dev build is required. Import auth and firestore from their native packages:
+The app uses the **web Firebase JS SDK** (`firebase/app`, `firebase/auth`, `firebase/firestore`) — not `@react-native-firebase`. Auth persistence is wired to AsyncStorage via `getReactNativePersistence`. Import from the standard web packages:
 
 ```js
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import { getFirestore, doc, ... } from 'firebase/firestore';
+import { initializeAuth, ... } from 'firebase/auth';
 ```
 
-All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `joinFamily` (kid joins via invite code), `deleteAllFamilyData` (GDPR right to erasure — deletes all subcollections + Auth account).
+All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `joinFamily` (kid joins via invite code), `deleteAllFamilyData` (GDPR/PDPA right to erasure — deletes all subcollections + Auth account).
 
 ### Boot sequence (App.js)
 
@@ -76,6 +76,15 @@ Role is determined by `currentUser.role` from `AppContext`. Modal screens (AddRe
 
 **`currentUser` ≠ `authUser`**: `authUser` is the Firebase Auth session (always the parent on the parent's device). `currentUser` is the active family profile — a parent can switch to a kid's profile via `SwitchUserScreen` to add requests on their behalf.
 
+### Consent gate (ConsentScreen.js)
+
+Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. Region is detected from `Localization.region` (primary) → BCP-47 locale tail (fallback) → `'SG'` (default). EU/EEA/UK users see GDPR-specific language and an extra rights checkbox. No IP geolocation is used — consent hasn't been given yet at detection time. Region detection lives in `detectRegion()` and consent is persisted via the exported `recordConsent()` / `hasConsented()` helpers.
+
+### Push notifications (src/utils/notifications.js)
+
+- **Guest mode**: `scheduleLocalNotification` — fires on the same device, no token needed.
+- **Sync mode**: `sendExpoPushNotification` — sends via Expo's push gateway to Dad's device using the Expo push token stored in the parent's Firestore `members` doc. Token is registered once on the parent device after load and saved via `savePushToken`. Kid devices read the token from the member doc to push to Dad. Dad is never notified of his own actions (skipped by `uid` comparison in `sendDadNotification`).
+
 ### Firestore data model
 
 ```
@@ -91,7 +100,7 @@ Status cycle: `pending` → `onway` → `done` (tap on DadHomeScreen cycles thro
 
 Kids on a shared parent device are created with `isLocalProfile: true` and a synthetic `uid` (doc ID) — they have no Firebase Auth account of their own.
 
-Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions. Deploy with `firebase deploy --only firestore:rules`.
+Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
 
 ### Design system
 
@@ -112,21 +121,6 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 - [ ] Run `eas init` in terminal to get the project ID, then paste it into `app.json` → `extra.eas.projectId`
 - [ ] Host privacy policy on GitHub Pages (`dadboard.app/privacy`)
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
-
-**Completed**
-- [x] Add meal planning feature — lunch/dinner attendance per day, weekly summary Meals tab
-- [x] Wire up push notifications (`src/utils/notifications.js` + `AppContext.js`)
-  - Guest mode: local notification on same device when a request is submitted
-  - Sync mode: Expo push API to Dad's device using token stored in Firestore member doc
-  - Meal toggles notify Dad only when a meal is newly turned ON
-
-### Key constraints
-
-- `@react-native-firebase` requires a **native dev build** for Firebase sync. Guest mode (anonymous auth + AsyncStorage) runs fine in Expo Go via `npm start`.
-- The `android/` folder was generated by `expo prebuild`. Do not hand-edit `android/app/build.gradle` plugin declarations without checking autolinking compatibility.
-- `google-services.json` at `android/app/google-services.json` is required at build time.
-- Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6).
-- Privacy policy URL referenced in AuthScreen: `dadboard.app/privacy` (to be hosted on GitHub Pages).
 
 ---
 
@@ -153,7 +147,7 @@ ls assets/icon.png && echo "✓ icon.png OK" || echo "✗ MISSING"
 ls assets/feature-graphic.png && echo "✓ feature-graphic.png OK" || echo "✗ MISSING"
 
 # 6. Firebase packages aligned
-cat node_modules/@react-native-firebase/app/package.json | grep '"version"' | head -1
+cat node_modules/firebase/package.json | grep '"version"' | head -1
 ```
 
 ## Build pipeline rules (learned the hard way)
@@ -161,25 +155,25 @@ cat node_modules/@react-native-firebase/app/package.json | grep '"version"' | he
 - ALWAYS run `npx expo prebuild --platform android --clean` after package changes
 - ALWAYS copy google-services.json back after `--clean` wipes it:
   `cp ~/Documents/Dadboard/android/app/google-services.json ~/Dadboard-work/android/app/google-services.json`
-- NEVER hardcode sdkVersion in app.json - let EAS detect it
+- NEVER hardcode sdkVersion in app.json — let EAS detect it
 - React Native Firebase version MUST match Expo SDK:
   - Expo 51 → Firebase v19
   - Expo 52 → Firebase v20+
-- Working directory is ~/Dadboard-work NOT ~/Documents/Dadboard (Documents has ACL restrictions)
+- Working directory is `~/Dadboard-work` NOT `~/Documents/Dadboard` (Documents has ACL restrictions)
 - If build fails, check logs at: https://expo.dev/accounts/razr73/projects/dadboard/builds
+- Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6)
 
 ## Known issues resolved
-- iconBackground color: defined in android/app/src/main/res/values/colors.xml
-- Duplicate Firebase classes: resolved via configurations.all in android/app/build.gradle
-- expo-asset and expo-font: must be explicitly installed for Expo 52
+- iconBackground color: defined in `android/app/src/main/res/values/colors.xml`
+- Duplicate Firebase classes: resolved via `configurations.all` in `android/app/build.gradle`
+- `expo-asset` and `expo-font`: must be explicitly installed for Expo 52
 - Expo SDK 51 + Firebase v20 = incompatible (Gradle plugin error)
 
 ## If starting fresh on a new machine
 ```bash
-# Correct baseline setup
 npx create-expo-app Dadboard --template blank
 cd Dadboard
-npx expo install @react-native-firebase/app@^19.3.0 @react-native-firebase/auth@^19.3.0 @react-native-firebase/firestore@^19.3.0
+npx expo install firebase @react-native-async-storage/async-storage
 npx expo install expo-notifications expo-secure-store expo-file-system expo-sharing expo-localization expo-device expo-asset expo-font
 npx expo install --fix
 eas build --platform android --profile development  # Test build BEFORE writing app code

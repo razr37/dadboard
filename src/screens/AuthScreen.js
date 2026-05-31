@@ -134,6 +134,8 @@ export default function AuthScreen() {
                 value={parentName}
                 onChangeText={setParentName}
                 autoCapitalize="words"
+                textContentType="name"
+                autoComplete="name"
               />
             </Field>
             <Field label="Email address">
@@ -146,6 +148,8 @@ export default function AuthScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                textContentType="emailAddress"
+                autoComplete="email"
               />
             </Field>
             <Field label="Password (min 8 characters)">
@@ -158,6 +162,8 @@ export default function AuthScreen() {
                   onChangeText={setPassword}
                   secureTextEntry={!showPass}
                   autoCapitalize="none"
+                  textContentType="newPassword"
+                  autoComplete="new-password"
                 />
                 <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPass(p => !p)}>
                   <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textTertiary} />
@@ -187,6 +193,8 @@ export default function AuthScreen() {
                 value={joinName}
                 onChangeText={setJoinName}
                 autoCapitalize="words"
+                textContentType="name"
+                autoComplete="name"
               />
             </Field>
             <Field label="Invite code from Dad">
@@ -210,6 +218,8 @@ export default function AuthScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                textContentType="emailAddress"
+                autoComplete="email"
               />
             </Field>
             <Field label="Password (min 8 characters)">
@@ -221,6 +231,8 @@ export default function AuthScreen() {
                 onChangeText={setJoinPassword}
                 secureTextEntry
                 autoCapitalize="none"
+                textContentType="newPassword"
+                autoComplete="new-password"
               />
             </Field>
 

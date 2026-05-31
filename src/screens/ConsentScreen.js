@@ -28,17 +28,32 @@ const EU_REGIONS = new Set([
 ]);
 
 function detectRegion() {
+  // No IP geolocation — we must not send the user's IP to a third party before
+  // they have consented. Region is derived entirely from device settings.
+  // Edge case: no-SIM devices (Wi-Fi-only tablets, emulators) have no carrier
+  // region and may show the wrong region if the device locale is misconfigured.
+  // This is acceptable — EU users on such devices can still see GDPR UI via
+  // their device language setting (e.g. "de-DE" locale).
   try {
-    // expo-localization returns e.g. "en-SG", "de-DE", "en-GB"
     const locale = Localization.locale || '';
-    const regionCode = locale.split('-')[1]?.toUpperCase();
+
+    // Primary: Localization.region is the device's explicit region/country
+    // setting and is more reliable than parsing the locale string.
+    const region = Localization.region?.toUpperCase();
+
+    // Fallback: parse the BCP-47 locale tag (e.g. "en-SG" → "SG").
+    const localePart = locale.split('-').pop()?.toUpperCase();
+    // Only accept the locale part if it looks like a 2-letter country code.
+    const localeRegion = localePart?.length === 2 ? localePart : undefined;
+
+    const regionCode = region || localeRegion || 'SG';
     return {
-      regionCode: regionCode || 'UNKNOWN',
+      regionCode,
       isEU: EU_REGIONS.has(regionCode),
       locale,
     };
   } catch {
-    return { regionCode: 'UNKNOWN', isEU: false, locale: '' };
+    return { regionCode: 'SG', isEU: false, locale: '' };
   }
 }
 
@@ -84,9 +99,20 @@ export default function ConsentScreen({ onAccept }) {
   const allChecked = requiredChecks.every(k => checked[k]);
   const canProceed = scrolledToBottom && allChecked;
 
+  // Fallback: if all boxes are ticked and the user has been on screen for 10s,
+  // unlock the button regardless of scroll position. Handles short content on
+  // tall screens where the strict threshold is never reached.
+  useEffect(() => {
+    if (scrolledToBottom) return;
+    const timer = setTimeout(() => {
+      if (allChecked) setScrolledToBottom(true);
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [allChecked, scrolledToBottom]);
+
   function handleScroll({ nativeEvent }) {
     const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 40) {
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 100) {
       setScrolledToBottom(true);
     }
   }
