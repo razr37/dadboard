@@ -43,11 +43,12 @@ function formatWeekRange(weekStart) {
 
 export default function MealsScreen({ navigation }) {
   const { family, mealPlans } = useApp();
-  const [weekStart, setWeekStart] = useState(getWeekStart());
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = this week, 1 = next week
 
-  const todayStr = toLocalDateStr(new Date());
-  const weekDays = getWeekDays(weekStart);
-  const isCurrentWeek = weekStart === getWeekStart();
+  const baseWeek   = getWeekStart();
+  const weekStart  = weekOffset === 0 ? baseWeek : shiftWeek(baseWeek, 1);
+  const todayStr   = toLocalDateStr(new Date());
+  const weekDays   = getWeekDays(weekStart);
 
   function getMembersForMeal(date, meal) {
     return family.filter(m => mealPlans[m.id]?.[weekStart]?.[date]?.[meal] === true);
@@ -76,28 +77,37 @@ export default function MealsScreen({ navigation }) {
         <View style={styles.weekNav}>
           <TouchableOpacity
             style={styles.navBtn}
-            onPress={() => setWeekStart(w => shiftWeek(w, -1))}
+            onPress={() => setWeekOffset(0)}
+            disabled={weekOffset === 0}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+            <Ionicons
+              name="chevron-back"
+              size={20}
+              color={weekOffset === 0 ? colors.border : colors.textSecondary}
+            />
           </TouchableOpacity>
 
-          <Text style={styles.weekLabel}>{formatWeekRange(weekStart)}</Text>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.weekLabel}>
+              {weekOffset === 0 ? 'This week' : 'Next week'}
+            </Text>
+            <Text style={styles.weekDateRange}>{formatWeekRange(weekStart)}</Text>
+          </View>
 
           <TouchableOpacity
             style={styles.navBtn}
-            onPress={() => setWeekStart(w => shiftWeek(w, 1))}
+            onPress={() => setWeekOffset(1)}
+            disabled={weekOffset === 1}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={weekOffset === 1 ? colors.border : colors.textSecondary}
+            />
           </TouchableOpacity>
         </View>
-
-        {!isCurrentWeek && (
-          <TouchableOpacity onPress={() => setWeekStart(getWeekStart())} style={styles.todayLink}>
-            <Text style={styles.todayLinkText}>Back to this week</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -221,14 +231,17 @@ const styles = StyleSheet.create({
   },
   navBtn: { padding: spacing.md },
   weekLabel: {
-    flex: 1,
-    textAlign: 'center',
     ...typography.body,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.textPrimary,
+    textAlign: 'center',
   },
-  todayLink: { alignSelf: 'center', marginTop: spacing.sm },
-  todayLinkText: { fontSize: 13, color: colors.primary, fontWeight: '500' },
+  weekDateRange: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 1,
+  },
   scroll: { paddingTop: spacing.sm },
 
   // Day card

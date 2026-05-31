@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   StyleSheet, Linking, Alert, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,6 +93,7 @@ export async function revokeConsent() {
 export default function ConsentScreen({ onAccept }) {
   const [regionInfo] = useState(() => detectRegion());
   const [scrolledToBottom, setScrolledToBottom] = useState(false);
+  const [accepting, setAccepting] = useState(false);
   const isEU = regionInfo.isEU;
 
   const [checked, setChecked] = useState({
@@ -109,14 +110,14 @@ export default function ConsentScreen({ onAccept }) {
   const allChecked = requiredChecks.every(k => checked[k]);
   const canProceed = scrolledToBottom && allChecked;
 
-  // Fallback: if all boxes are ticked and the user has been on screen for 10s,
+  // Fallback: if all boxes are ticked and the user has been on screen for 2s,
   // unlock the button regardless of scroll position. Handles short content on
   // tall screens where the strict threshold is never reached.
   useEffect(() => {
     if (scrolledToBottom) return;
     const timer = setTimeout(() => {
       if (allChecked) setScrolledToBottom(true);
-    }, 10000);
+    }, 2000);
     return () => clearTimeout(timer);
   }, [allChecked, scrolledToBottom]);
 
@@ -127,12 +128,17 @@ export default function ConsentScreen({ onAccept }) {
     }
   }
 
-  function handleAccept() {
+  async function handleAccept() {
     console.log('[ConsentScreen] handleAccept called, onAccept type:', typeof onAccept);
+    setAccepting(true);
+    try {
+      await recordConsent(regionInfo);
+    } catch (e) {
+      // Storage failure must not block navigation — consent is best-effort.
+      console.warn('[ConsentScreen] recordConsent failed, proceeding anyway:', e);
+    }
+    // onAccept() is the only thing that drives navigation — App.js handles routing.
     onAccept();
-    recordConsent(regionInfo).catch(e => {
-      console.warn('[ConsentScreen] recordConsent failed:', e);
-    });
   }
 
   function handleDecline() {
@@ -291,11 +297,17 @@ export default function ConsentScreen({ onAccept }) {
         <TouchableOpacity
           style={[styles.acceptBtn, !canProceed && styles.acceptBtnDisabled]}
           onPress={handleAccept}
-          disabled={!canProceed}
+          disabled={!canProceed || accepting}
           activeOpacity={0.85}
         >
-          <Ionicons name="checkmark-circle-outline" size={18} color={colors.white} style={{ marginRight: 6 }} />
-          <Text style={styles.acceptText}>I agree — let's get started</Text>
+          {accepting ? (
+            <ActivityIndicator color={colors.white} size="small" />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle-outline" size={18} color={colors.white} style={{ marginRight: 6 }} />
+              <Text style={styles.acceptText}>I agree — let's get started</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {!canProceed && (

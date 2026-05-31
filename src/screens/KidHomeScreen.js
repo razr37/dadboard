@@ -128,24 +128,63 @@ function QuickBtn({ icon, label, color, onPress }) {
 }
 
 function MealsThisWeek({ memberId, kidColor }) {
-  const weekStart = getWeekStart();
-  const weekDays = getWeekDays(weekStart);
-  const todayStr = toLocalDateStr(new Date());
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = this week, 1 = next week
+
+  const baseWeek  = getWeekStart();
+  const weekStart = weekOffset === 0 ? baseWeek : toLocalDateStr(addDays(new Date(baseWeek + 'T00:00:00'), 7));
+  const weekDays  = getWeekDays(weekStart);
+  const todayStr  = toLocalDateStr(new Date());
 
   return (
-    <View style={[styles.mealCard, shadow.sm]}>
-      {weekDays.map((date, i) => (
-        <MealDayRow
-          key={date}
-          date={date}
-          dayName={DAY_NAMES[i]}
-          memberId={memberId}
-          weekStart={weekStart}
-          kidColor={kidColor}
-          isToday={date === todayStr}
-          isLast={i === 6}
-        />
-      ))}
+    <View style={styles.mealSection}>
+      {/* Week switcher */}
+      <View style={[styles.mealWeekNav, { borderColor: kidColor + '40' }]}>
+        <TouchableOpacity
+          onPress={() => setWeekOffset(0)}
+          disabled={weekOffset === 0}
+          style={styles.mealWeekBtn}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={16}
+            color={weekOffset === 0 ? colors.border : kidColor}
+          />
+        </TouchableOpacity>
+
+        <Text style={[styles.mealWeekLabel, { color: kidColor }]}>
+          {weekOffset === 0 ? 'This week' : 'Next week'}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setWeekOffset(1)}
+          disabled={weekOffset === 1}
+          style={styles.mealWeekBtn}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={weekOffset === 1 ? colors.border : kidColor}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Meal grid */}
+      <View style={[styles.mealCard, shadow.sm]}>
+        {weekDays.map((date, i) => (
+          <MealDayRow
+            key={date}
+            date={date}
+            dayName={DAY_NAMES[i]}
+            memberId={memberId}
+            weekStart={weekStart}
+            kidColor={kidColor}
+            isToday={date === todayStr}
+            isLast={i === 6}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -262,11 +301,30 @@ const styles = StyleSheet.create({
   reqTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   textDone: { textDecorationLine: 'line-through', color: colors.textTertiary },
   reqMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  mealSection: {
+    marginBottom: spacing.lg,
+  },
+  mealWeekNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  mealWeekBtn: { padding: spacing.sm },
+  mealWeekLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   mealCard: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
     overflow: 'hidden',
   },
   mealDayRow: {
