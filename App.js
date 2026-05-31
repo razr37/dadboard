@@ -10,6 +10,12 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Dismiss the native splash immediately when the JS bundle loads.
+// The brand-colour background in app.json ensures any unavoidable flash
+// is orange rather than the default geometric pattern.
+SplashScreen.hideAsync();
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -111,7 +117,9 @@ function AppNavigator({ consentGiven, onConsentAccepted }) {
     );
   }
 
-  const isParent = currentUser?.role === 'parent';
+  const isParent = currentUser?.role === 'parent'
+    || currentUser?.role === 'spouse'
+    || currentUser?.role === 'adult';
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

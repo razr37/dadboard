@@ -17,9 +17,16 @@ const REQUEST_TYPES = [
 
 const URGENCY_OPTIONS = ['Today', 'This weekend', 'This week', 'No rush'];
 
-export default function AddRequestScreen({ navigation }) {
+const VALID_TYPES = new Set(REQUEST_TYPES.map(t => t.key));
+
+export default function AddRequestScreen({ navigation, route }) {
   const { currentUser, addRequest } = useApp();
-  const [type, setType] = useState('pickup');
+  const [type, setType] = useState(() => {
+    const dt = route?.params?.defaultType;
+    if (!dt) return 'pickup';
+    // 'meal' and any other unknown types open as 'other' (closest match)
+    return VALID_TYPES.has(dt) ? dt : 'other';
+  });
 
   // Pickup fields
   const [activity, setActivity] = useState('');

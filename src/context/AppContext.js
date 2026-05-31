@@ -240,12 +240,15 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function addFamilyMember(name) {
-    const colorIndex = family.filter(f => f.role === 'kid').length % 5;
+  async function addFamilyMember(name, role = 'kid') {
+    // Adults (spouse/adult) share the parent color (-1); kids get a rotating kid color.
+    const colorIndex = role === 'kid'
+      ? family.filter(f => f.role === 'kid').length % 5
+      : -1;
     if (isSynced && familyId) {
-      await addKidMember(familyId, name, colorIndex);
+      await addKidMember(familyId, name, colorIndex, role);
     } else {
-      const member = { id: uuid.v4(), name, role: 'kid', colorIndex };
+      const member = { id: uuid.v4(), name, role, colorIndex };
       await saveLocalFamily([...family, member]);
       return member;
     }

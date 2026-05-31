@@ -20,6 +20,7 @@ import * as Sharing from 'expo-sharing';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography } from '../utils/theme';
 import { revokeConsent } from './ConsentScreen';
+import { deleteAllFamilyData, signOut } from '../utils/firebase';
 
 const EU_REGIONS = new Set([
   'AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','FR','GR','HR',
@@ -28,7 +29,7 @@ const EU_REGIONS = new Set([
 ]);
 
 export default function PrivacySettingsScreen({ navigation }) {
-  const { family, requests, currentUser } = useApp();
+  const { family, requests, currentUser, familyId, isSynced } = useApp();
   const [consentMeta, setConsentMeta] = useState(null);
   const [exporting, setExporting] = useState(false);
   const isEU = EU_REGIONS.has(consentMeta?.region);
@@ -139,12 +140,35 @@ export default function PrivacySettingsScreen({ navigation }) {
 
   async function performDelete() {
     try {
-      await AsyncStorage.multiRemove(['dadapp_family', 'dadapp_requests', 'dadapp_current_user', 'famigo_consent_v2', 'dadboard_consent_meta']);
-      Alert.alert('Deleted', 'All data has been permanently erased from this device.', [
-        { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Consent' }] }) },
-      ]);
-    } catch {
-      Alert.alert('Error', 'Could not delete all data. Email privacy@dadboard.app for manual deletion.');
+      // 1. Delete cloud data + Firebase Auth account (sync mode only).
+      //    deleteAllFamilyData() also calls deleteUser() which signs the account out.
+      if (isSynced && familyId) {
+        await deleteAllFamilyData(familyId);
+      }
+
+      // 2. Wipe all local state (correct dadboard_* key names).
+      await AsyncStorage.clear();
+
+      // 3. Revoke consent record (belt-and-suspenders after clear).
+      await revokeConsent();
+
+      // 4. Sign out the Firebase session (covers guest/anonymous mode;
+      //    for sync mode the account is already deleted but sign-out is harmless).
+      await signOut();
+
+      // Navigation is handled automatically: signOut() / deleteUser() triggers
+      // onAuthStateChanged(null) in Root → App renders AuthScreen without
+      // needing an explicit navigation.reset().
+    } catch (e) {
+      if (e?.code === 'auth/requires-recent-login') {
+        Alert.alert(
+          'Sign in required',
+          'For security, please sign out and sign back in before deleting your account.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', 'Could not delete all data. Email privacy@dadboard.app for manual deletion.');
+      }
     }
   }
 
@@ -223,7 +247,7 @@ export default function PrivacySettingsScreen({ navigation }) {
             { text: 'Withdraw', style: 'destructive', onPress: performDelete },
           ]);
         }} />
-        <ActionRow icon="trash-outline" label="Delete all my data" desc={isEU ? 'GDPR Art.17 — permanently erase everything, device and cloud' : 'Permanently erase all data from device and cloud (Pro)'} color={colors.danger} onPress={handleDeleteAll} destructive />
+        <ActionRow icon="trash-outline" label="Delete account &amp; all data" desc={isEU ? 'GDPR Art.17 — permanently erases all data from device and cloud and deletes your account' : 'Permanently erases all family data from device and cloud and deletes your account'} color={colors.danger} onPress={handleDeleteAll} destructive />
 
         {/* Contact */}
         <View style={[styles.card, { marginTop: spacing.md }]}>

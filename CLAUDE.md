@@ -42,7 +42,7 @@ Every public method on `AppContext` routes to the right backend automatically vi
 | `addRequest(req)` | Create a pickup / buy / other request |
 | `updateRequestStatus(id, status)` | Cycle status: `pending` → `onway` → `done` |
 | `deleteRequest(id)` | Remove a request |
-| `addFamilyMember(name)` | Add a kid (auto-assigns next `colorIndex`) |
+| `addFamilyMember(name, role)` | Add a member; `role` is `'kid'` (default), `'spouse'`, or `'adult'`. Kids get a rotating `colorIndex` (0–4); adults get `-1` (parent orange). |
 | `switchUser(user)` | Change active profile (persisted to AsyncStorage in both modes) |
 | `setMealDay(memberId, date, {lunch, dinner})` | Toggle meal presence for a member; optimistic update in both modes |
 | `getTodayRequests()` | Derived: today's pickups sorted by time |
@@ -65,6 +65,8 @@ All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Au
 
 This means `AppProvider`'s context is not available in `AuthScreen` or `ConsentScreen`.
 
+**Splash screen**: `SplashScreen.hideAsync()` is called at module scope (before any component mounts) so the native splash dismisses as soon as the JS bundle loads. `app.json` sets `splash.backgroundColor` to `#F07C2A` (brand orange) with no image — any unavoidable flash shows brand colour rather than a pattern. Do not add `SplashScreen.preventAutoHideAsync()` or the splash will hang.
+
 ### Navigation
 
 Two role-based tab navigators sit inside a root `Stack.Navigator`:
@@ -72,13 +74,22 @@ Two role-based tab navigators sit inside a root `Stack.Navigator`:
 - `DadTabs` — Today (DadHomeScreen) / Schedule / Shopping / Meals
 - `KidTabs` — Home (KidHomeScreen) only
 
-Role is determined by `currentUser.role` from `AppContext`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth) are pushed onto the root stack from either tab set.
+`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidTabs`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth) are pushed onto the root stack from either tab set.
 
 **`currentUser` ≠ `authUser`**: `authUser` is the Firebase Auth session (always the parent on the parent's device). `currentUser` is the active family profile — a parent can switch to a kid's profile via `SwitchUserScreen` to add requests on their behalf.
 
+**SwitchUserScreen navigation gotcha**: `navigation.goBack()` must be called *before* `switchUser()`. A role change (`parent`↔`kid`) causes `AppNavigator` to swap the entire stack, detaching the modal's navigation context. Calling `goBack()` after the role state update has no effect.
+
 ### Consent gate (ConsentScreen.js)
 
-Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. Region is detected from `Localization.region` (primary) → BCP-47 locale tail (fallback) → `'SG'` (default). EU/EEA/UK users see GDPR-specific language and an extra rights checkbox. No IP geolocation is used — consent hasn't been given yet at detection time. Region detection lives in `detectRegion()` and consent is persisted via the exported `recordConsent()` / `hasConsented()` helpers.
+Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/EEA/UK users see GDPR-specific language and an extra rights checkbox. No IP geolocation is used — consent hasn't been given yet at detection time.
+
+**Region detection** (`detectRegion()`):
+- `isEU` is `true` **only** when `Localization.region` explicitly returns an EU/EEA/UK country code. Locale parsing can set `regionCode` for display but can **never** trigger GDPR on its own.
+- `Localization.region` is the primary source. The locale-string fallback (e.g. `"en-SG"` → `"SG"`) is skipped for globally-distributed language codes (`en`, `fr`, `es`, `pt`, `nl`, `de`) because tags like `en-GB` are standard on non-EU devices in SG, MY, HK, AU.
+- If `Localization.region` is null (no SIM, emulator, some Android builds), `isEU` is `false` and `regionCode` defaults to `'SG'`.
+
+**`handleAccept`**: wraps `recordConsent` in try/catch — an AsyncStorage failure logs a warning but does not block `onAccept()`. Consent is persisted via `recordConsent()` / `hasConsented()` / `revokeConsent()` (exported helpers).
 
 ### Push notifications (src/utils/notifications.js)
 
@@ -164,10 +175,14 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6)
 
 ## Known issues resolved
+- SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first
 - iconBackground color: defined in `android/app/src/main/res/values/colors.xml`
 - Duplicate Firebase classes: resolved via `configurations.all` in `android/app/build.gradle`
 - `expo-asset` and `expo-font`: must be explicitly installed for Expo 52
 - Expo SDK 51 + Firebase v20 = incompatible (Gradle plugin error)
+- ConsentScreen: `en-GB` locale falsely triggered GDPR on SG devices where `Localization.region` returns null — fixed by requiring explicit `Localization.region` for `isEU`
+- ConsentScreen: "I agree" button tapped but did nothing — `handleAccept` had no try/catch; AsyncStorage throw in `recordConsent` silently blocked `onAccept()`
+- ConsentScreen: button stayed greyed out after ticking all checkboxes — scroll threshold tightened to `-100px` and 10s fallback timer added
 
 ## If starting fresh on a new machine
 ```bash

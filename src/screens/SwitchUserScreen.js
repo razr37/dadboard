@@ -1,30 +1,56 @@
 // src/screens/SwitchUserScreen.js
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
-import { Avatar, PrimaryButton } from '../components/UI';
+import { Avatar } from '../components/UI';
+
+const ROLE_OPTIONS = [
+  { value: 'kid',    label: 'Kid',              desc: 'Simplified view · can submit requests' },
+  { value: 'spouse', label: 'Spouse / Partner',  desc: 'Full dashboard · manages all requests' },
+  { value: 'adult',  label: 'Other adult',       desc: 'Full dashboard · manages all requests' },
+];
+
+const ADULT_ROLES = new Set(['parent', 'spouse', 'adult']);
+
+function roleLabel(role) {
+  if (role === 'parent')  return 'Parent · receives all requests';
+  if (role === 'spouse')  return 'Spouse / Partner · full dashboard';
+  if (role === 'adult')   return 'Adult · full dashboard';
+  return 'Kid · can send requests';
+}
 
 export default function SwitchUserScreen({ navigation }) {
   const { family, currentUser, switchUser, addFamilyMember } = useApp();
   const [newName, setNewName] = useState('');
+  const [selectedRole, setSelectedRole] = useState('kid');
   const [adding, setAdding] = useState(false);
 
-  async function handleSwitch(member) {
-    await switchUser(member);
+  function handleSwitch(member) {
+    // goBack() must fire before switchUser() changes currentUser.role.
+    // A role change (parent ↔ kid) causes AppNavigator to swap the entire stack,
+    // detaching this modal's navigation context before goBack() could run.
     navigation.goBack();
+    switchUser(member);
   }
 
   function handleAddMember() {
     if (!newName.trim()) return;
-    addFamilyMember(newName.trim());
+    addFamilyMember(newName.trim(), selectedRole);
     setNewName('');
+    setSelectedRole('kid');
     setAdding(false);
   }
 
-  const dad = family.find(f => f.role === 'parent');
-  const kids = family.filter(f => f.role === 'kid');
+  function handleCancel() {
+    setAdding(false);
+    setNewName('');
+    setSelectedRole('kid');
+  }
+
+  const adults = family.filter(f => ADULT_ROLES.has(f.role));
+  const kids   = family.filter(f => f.role === 'kid');
 
   return (
     <View style={styles.container}>
@@ -37,39 +63,66 @@ export default function SwitchUserScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.sectionLabel}>Parent</Text>
-        {dad && (
+        <Text style={styles.sectionLabel}>Adults</Text>
+        {adults.map(member => (
           <MemberCard
-            member={dad}
-            isActive={currentUser.id === dad.id}
-            onPress={() => handleSwitch(dad)}
-            isParent
-          />
-        )}
-
-        <Text style={styles.sectionLabel}>Kids</Text>
-        {kids.map(kid => (
-          <MemberCard
-            key={kid.id}
-            member={kid}
-            isActive={currentUser.id === kid.id}
-            onPress={() => handleSwitch(kid)}
+            key={member.id}
+            member={member}
+            isActive={currentUser.id === member.id}
+            onPress={() => handleSwitch(member)}
           />
         ))}
 
+        {kids.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>Kids</Text>
+            {kids.map(kid => (
+              <MemberCard
+                key={kid.id}
+                member={kid}
+                isActive={currentUser.id === kid.id}
+                onPress={() => handleSwitch(kid)}
+              />
+            ))}
+          </>
+        )}
+
         {adding ? (
           <View style={[styles.addForm, shadow.sm]}>
-            <Text style={styles.addLabel}>Kid's name</Text>
+            <Text style={styles.addLabel}>Name</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Sophia"
+              placeholder="e.g. Sophia, Mum…"
               placeholderTextColor={colors.textTertiary}
               value={newName}
               onChangeText={setNewName}
               autoFocus
+              textContentType="name"
+              autoComplete="name"
             />
+
+            <Text style={[styles.addLabel, { marginTop: spacing.sm }]}>Role</Text>
+            {ROLE_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.roleOption, selectedRole === opt.value && styles.roleOptionActive]}
+                onPress={() => setSelectedRole(opt.value)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.radioOuter, selectedRole === opt.value && styles.radioOuterActive]}>
+                  {selectedRole === opt.value && <View style={styles.radioInner} />}
+                </View>
+                <View style={styles.roleText}>
+                  <Text style={[styles.roleLabel, selectedRole === opt.value && styles.roleLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={styles.roleDesc}>{opt.desc}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+
             <View style={styles.addActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setAdding(false); setNewName(''); }}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -91,7 +144,7 @@ export default function SwitchUserScreen({ navigation }) {
         <View style={styles.tip}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textTertiary} />
           <Text style={styles.tipText}>
-            Switch to a kid's profile so they can send you requests without seeing the full family view.
+            Switch to a kid's profile so they can send requests without seeing the full family view.
           </Text>
         </View>
 
@@ -101,21 +154,21 @@ export default function SwitchUserScreen({ navigation }) {
   );
 }
 
-function MemberCard({ member, isActive, onPress, isParent }) {
-  const kidColor = member.colorIndex >= 0 ? colors.kids[member.colorIndex % 5] : colors.primary;
+function MemberCard({ member, isActive, onPress }) {
+  const memberColor = member.colorIndex >= 0 ? colors.kids[member.colorIndex % 5] : colors.primary;
   return (
     <TouchableOpacity
-      style={[styles.memberCard, shadow.sm, isActive && styles.memberCardActive, isActive && { borderColor: kidColor }]}
+      style={[styles.memberCard, shadow.sm, isActive && styles.memberCardActive, isActive && { borderColor: memberColor }]}
       onPress={onPress}
       activeOpacity={0.8}
     >
       <Avatar name={member.name} colorIndex={member.colorIndex} size={48} />
       <View style={styles.memberInfo}>
         <Text style={styles.memberName}>{member.name}</Text>
-        <Text style={styles.memberRole}>{isParent ? 'Parent · receives all requests' : 'Kid · can send requests'}</Text>
+        <Text style={styles.memberRole}>{roleLabel(member.role)}</Text>
       </View>
       {isActive && (
-        <View style={[styles.activeCheck, { backgroundColor: kidColor }]}>
+        <View style={[styles.activeCheck, { backgroundColor: memberColor }]}>
           <Ionicons name="checkmark" size={14} color={colors.white} />
         </View>
       )}
@@ -170,7 +223,30 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, padding: spacing.md,
     fontSize: 15, color: colors.textPrimary, marginBottom: spacing.md,
   },
-  addActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  roleOption: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    padding: spacing.md, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: colors.border,
+    marginBottom: spacing.sm, backgroundColor: colors.bg,
+  },
+  roleOptionActive: {
+    borderColor: colors.primary, backgroundColor: colors.primaryLight,
+  },
+  radioOuter: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 2, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioOuterActive: { borderColor: colors.primary },
+  radioInner: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  roleText: { flex: 1 },
+  roleLabel: { ...typography.body, color: colors.textSecondary, fontWeight: '600' },
+  roleLabelActive: { color: colors.primary },
+  roleDesc: { ...typography.caption, color: colors.textTertiary, marginTop: 1 },
+  addActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', marginTop: spacing.sm },
   cancelBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   cancelText: { fontSize: 14, color: colors.textSecondary },
   confirmBtn: {

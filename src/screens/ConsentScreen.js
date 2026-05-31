@@ -27,31 +27,41 @@ const EU_REGIONS = new Set([
   'IS','LI','NO', // EEA non-EU
 ]);
 
+// Language codes that are widely used outside the EU (e.g. en-GB is standard in
+// SG, MY, HK, AU). A locale tag ending in an EU country code is not sufficient
+// evidence of EU residency when the language itself is globally distributed.
+// GDPR is only triggered when Localization.region explicitly confirms an EU country.
+const GLOBALLY_DISTRIBUTED_LANGS = new Set(['en', 'fr', 'es', 'pt', 'nl', 'de']);
+
 function detectRegion() {
   // No IP geolocation — we must not send the user's IP to a third party before
   // they have consented. Region is derived entirely from device settings.
-  // Edge case: no-SIM devices (Wi-Fi-only tablets, emulators) have no carrier
-  // region and may show the wrong region if the device locale is misconfigured.
-  // This is acceptable — EU users on such devices can still see GDPR UI via
-  // their device language setting (e.g. "de-DE" locale).
+  // If Localization.region is null (e.g. no SIM, emulator, certain Android builds),
+  // we default to PDPA (non-EU). We never infer EU residency from language alone.
   try {
     const locale = Localization.locale || '';
+    const langCode = locale.split('-')[0]?.toLowerCase();
 
-    // Primary: Localization.region is the device's explicit region/country
-    // setting and is more reliable than parsing the locale string.
+    // Primary source: explicit device region setting.
     const region = Localization.region?.toUpperCase();
 
-    // Fallback: parse the BCP-47 locale tag (e.g. "en-SG" → "SG").
+    // Locale fallback: only use the country tag from the locale string when
+    // Localization.region is unavailable AND the language is not one that is
+    // globally distributed (e.g. reject "en-GB" as evidence of being in the UK).
     const localePart = locale.split('-').pop()?.toUpperCase();
-    // Only accept the locale part if it looks like a 2-letter country code.
-    const localeRegion = localePart?.length === 2 ? localePart : undefined;
+    const localeCountry = localePart?.length === 2 ? localePart : undefined;
+    const localeRegion =
+      localeCountry && !GLOBALLY_DISTRIBUTED_LANGS.has(langCode)
+        ? localeCountry
+        : undefined;
 
     const regionCode = region || localeRegion || 'SG';
-    return {
-      regionCode,
-      isEU: EU_REGIONS.has(regionCode),
-      locale,
-    };
+
+    // GDPR only fires when Localization.region explicitly places the user in the
+    // EU/EEA/UK. A locale-derived country code is never enough on its own.
+    const isEU = !!region && EU_REGIONS.has(region);
+
+    return { regionCode, isEU, locale };
   } catch {
     return { regionCode: 'SG', isEU: false, locale: '' };
   }
@@ -117,9 +127,12 @@ export default function ConsentScreen({ onAccept }) {
     }
   }
 
-  async function handleAccept() {
-    await recordConsent(regionInfo);
+  function handleAccept() {
+    console.log('[ConsentScreen] handleAccept called, onAccept type:', typeof onAccept);
     onAccept();
+    recordConsent(regionInfo).catch(e => {
+      console.warn('[ConsentScreen] recordConsent failed:', e);
+    });
   }
 
   function handleDecline() {

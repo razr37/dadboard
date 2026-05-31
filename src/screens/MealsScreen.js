@@ -40,7 +40,7 @@ function formatWeekRange(weekStart) {
   return `${s.getDate()} ${MONTH_SHORT[s.getMonth()]} – ${e.getDate()} ${MONTH_SHORT[e.getMonth()]}`;
 }
 
-export default function MealsScreen() {
+export default function MealsScreen({ navigation }) {
   const { family, mealPlans } = useApp();
   const [weekStart, setWeekStart] = useState(getWeekStart());
 
@@ -62,7 +62,15 @@ export default function MealsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Meals</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Meals</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('AddRequest', { defaultType: 'meal' })}
+            style={styles.addBtn}
+          >
+            <Ionicons name="add" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.weekNav}>
           <TouchableOpacity
@@ -185,7 +193,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.bg,
   },
-  title: { ...typography.h2, color: colors.textPrimary, marginBottom: spacing.md },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  title: { ...typography.h2, color: colors.textPrimary },
+  addBtn: { padding: 6, backgroundColor: colors.primaryLight, borderRadius: radius.full },
   weekNav: {
     flexDirection: 'row',
     alignItems: 'center',
