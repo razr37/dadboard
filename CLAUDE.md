@@ -116,6 +116,8 @@ Kids on a shared parent device are created with `isLocalProfile: true` and a syn
 
 Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
 
+**`isParent()` in rules covers `'parent'`, `'spouse'`, and `'adult'`** — matches the app-level `isParent` check in `App.js`. If you add new adult roles, update this function in the rules too or those roles will be denied write access. Deploy with `firebase deploy --only firestore:rules` after any rules change.
+
 ### Invite deep link (InviteScreen.js + AuthScreen.js + App.js)
 
 Invite link format: `https://dadboard.app/join?code=FAMILYID`
@@ -127,6 +129,16 @@ Invite link format: `https://dadboard.app/join?code=FAMILYID`
 **Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: auto-switches to `'join'` tab, pre-fills `inviteCode` state, hides the code field (replaced by a green "detected" badge), and shows 3 fields (Name / Email / Password) instead of 4. Without a link: original 4-field form.
 
 **Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live — once the domain is purchased, set `autoVerify: true` and host `/.well-known/assetlinks.json` to get direct app opening without the chooser dialog.
+
+### AuthScreen.js — sign-in vs create-account state
+
+The "I'm the Dad" tab has two modes controlled by `signInMode` (boolean state):
+- **Create mode** (default): name + email + `createPassword`; "Create family account" button
+- **Sign-in mode**: email (pre-filled) + `signInPassword` (separate state, never shares value with `createPassword`); "Sign in" button; "Forgot password?" link
+
+**`auth/email-already-in-use`**: caught specifically in `handleCreateParent` — shows an Alert with "Sign in" / "Cancel". "Sign in" sets `signInPassword = ''` then `signInMode = true`. Email stays pre-filled. The create password is **never** copied to `signInPassword`.
+
+**Forgot password** (`handleForgotPassword`): validates email is non-empty, calls `sendPasswordReset(email)`, shows confirmation. Available in sign-in mode only.
 
 ### SettingsScreen.js
 
@@ -236,6 +248,8 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 ## Known issues resolved
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
 - SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
+- Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
+- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; split into `createPassword` (create form) and `signInPassword` (sign-in form); sign-in mode activated via `signInMode` boolean
 - PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
 - PrivacySettingsScreen + SettingsScreen: single try/catch meant cloud failure blocked local cleanup; split into independent blocks so AsyncStorage always clears
 - MealsScreen, KidHomeScreen, AppContext: `toISOString()` UTC offset caused wrong week on SGT devices — all replaced with `toLocalDateStr()` + `date-fns startOfWeek`; kid writes and Dad reads now use the same Firestore key
