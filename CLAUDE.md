@@ -32,7 +32,7 @@ There are no tests. There is no lint configuration.
 
 The app has two operating modes controlled entirely by `AppContext` (`src/context/AppContext.js`):
 
-- **Guest mode** — anonymous Firebase Auth, all data in AsyncStorage. Activated when user picks "Try it free" or when `familyId` is absent after auth. Starts with `SEED_FAMILY` / `SEED_REQUESTS` demo data.
+- **Guest mode** — anonymous Firebase Auth, all data in AsyncStorage. Activated when user picks "Try it free" or when `familyId` is absent after auth. Starts with empty family and requests; `DEFAULT_USER` (parent role, `colorIndex: -1`) is the initial `currentUser` so `DadTabs` renders correctly on a clean install.
 - **Sync mode** — email/password Firebase Auth + a Firestore `familyId`. All mutations go to Firestore; real-time listeners keep state current across devices.
 
 Every public method on `AppContext` routes to the right backend automatically via the `isSynced && familyId` guard. Do not bypass this — write new operations the same way. The full public API:
@@ -70,12 +70,14 @@ This means `AppProvider`'s context is not available in `AuthScreen` or `ConsentS
 
 ### Navigation
 
-Two role-based tab navigators sit inside a root `Stack.Navigator`:
+Two role-based navigators sit inside a root `Stack.Navigator`:
 
-- `DadTabs` — Today (DadHomeScreen) / Schedule / Shopping / Meals
-- `KidTabs` — Home (KidHomeScreen) only
+- `DadTabs` (Tab.Navigator) — Today / Schedule / Shopping / Meals
+- `KidMain` (Stack.Navigator) — KidHomeScreen only, **no tab bar** (single screen needs no tabs)
 
-`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidTabs`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth) are pushed onto the root stack from either tab set.
+`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidMain`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth, Settings) are pushed onto the root stack and accessible from either navigator.
+
+**Role-based access**: Settings, Privacy, Invite, and Manage Members have no entry points in `KidHomeScreen` — kids only navigate to `AddRequest` and `SwitchUser`. The routes are registered for all users but no kid-visible button calls them.
 
 **`currentUser` ≠ `authUser`**: `authUser` is the Firebase Auth session (always the parent on the parent's device). `currentUser` is the active family profile — a parent can switch to a kid's profile via `SwitchUserScreen` to add requests on their behalf.
 
@@ -114,6 +116,18 @@ Kids on a shared parent device are created with `isLocalProfile: true` and a syn
 
 Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
 
+### Invite deep link (InviteScreen.js + AuthScreen.js + App.js)
+
+Invite link format: `https://dadboard.app/join?code=FAMILYID`
+
+**Sending** (InviteScreen): generates the full URL, shows a WhatsApp button (`whatsapp://send?text=...` with `canOpenURL` guard), copy-link button, and generic share sheet. Raw `familyId` shown as a fallback note.
+
+**Receiving** (App.js `Root`): `Linking.getInitialURL()` handles cold-start opens; `Linking.addEventListener('url')` handles foreground opens. `parseInviteCode(url)` extracts the `?code=` param. `initialInviteCode` state flows through `Root` → `AppNavigator` → both `AuthScreen` instances (standalone + in-app modal).
+
+**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: auto-switches to `'join'` tab, pre-fills `inviteCode` state, hides the code field (replaced by a green "detected" badge), and shows 3 fields (Name / Email / Password) instead of 4. Without a link: original 4-field form.
+
+**Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live — once the domain is purchased, set `autoVerify: true` and host `/.well-known/assetlinks.json` to get direct app opening without the chooser dialog.
+
 ### SettingsScreen.js
 
 Reached via the gear icon (⚙) in DadHomeScreen header. Registered as `presentation: 'modal'` in the root stack. Four sections:
@@ -137,7 +151,7 @@ function toLocalDateStr(date) {
 }
 ```
 
-Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week starts. Both `MealsScreen` and `AppContext` use this pattern — keep them consistent or Firestore keys will diverge.
+Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week starts. `MealsScreen`, `KidHomeScreen`, and `AppContext.getWeekStartDate` all use this pattern — keep them consistent or Firestore meal plan keys will diverge between what kids write and what Dad reads.
 
 ### Delete account (PrivacySettingsScreen.js)
 
@@ -151,7 +165,9 @@ Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week
 
 **No `navigation.reset()` needed**: `signOut()` / `deleteUser()` triggers `onAuthStateChanged(null)` in `Root`, which re-renders the entire tree to `AuthScreen`. Calling `navigation.reset()` after this would operate on a detached navigator and throw.
 
-**`auth/requires-recent-login`**: Firebase requires a recent session before `deleteUser()`. This error is caught and surfaces a prompt to sign out and back in.
+**`auth/requires-recent-login`**: Firebase requires a recent session before `deleteUser()`. This error returns early **without** clearing local data — the user must re-authenticate and retry so deletion is atomic. Do not `AsyncStorage.clear()` before `deleteUser()` succeeds.
+
+**Independent try/catch blocks**: cloud deletion (`deleteAllFamilyData`) and local cleanup (`AsyncStorage.clear` + `revokeConsent` + `signOut`) are in separate try/catch blocks. Local cleanup always runs even if Firestore/Firebase fails. The same pattern is used in both `PrivacySettingsScreen` and `SettingsScreen`.
 
 ### Design system
 
@@ -172,6 +188,7 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 - [x] Account deletion — PrivacySettingsScreen "Delete account & all data" deletes Firestore data + Auth account + local storage (Play Store policy requirement)
 - [ ] Run `eas init` in terminal to get the project ID, then paste it into `app.json` → `extra.eas.projectId`
 - [ ] Host privacy policy on GitHub Pages (`dadboard.app/privacy`)
+- [ ] After domain is live: set `intentFilters[0].autoVerify: true` in `app.json` and host `/.well-known/assetlinks.json` for direct deep link opening
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
 
 ---
@@ -217,8 +234,12 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - `@react-native-community/datetimepicker` is a native module — requires `expo prebuild` + a fresh native build after adding it
 
 ## Known issues resolved
-- SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first
+- SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
+- SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
 - PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
+- PrivacySettingsScreen + SettingsScreen: single try/catch meant cloud failure blocked local cleanup; split into independent blocks so AsyncStorage always clears
+- MealsScreen, KidHomeScreen, AppContext: `toISOString()` UTC offset caused wrong week on SGT devices — all replaced with `toLocalDateStr()` + `date-fns startOfWeek`; kid writes and Dad reads now use the same Firestore key
+- Splash screen: green square caused by missing `resizeMode: contain` in app.json; `splashscreen_logo.png` resource reference satisfied by 1×1 transparent PNG generated by withAndroidFixes plugin
 - iconBackground color: defined in `android/app/src/main/res/values/colors.xml`
 - Duplicate Firebase classes: resolved via `configurations.all` in `android/app/build.gradle`
 - `expo-asset` and `expo-font`: must be explicitly installed for Expo 52
