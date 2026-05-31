@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import {
   signInAnonymously, signInWithEmail,
-  createEmailAccount, joinFamily, createFamily, getFamilyId
+  createEmailAccount, joinFamily, createFamily, sendPasswordReset,
 } from '../utils/firebase';
 import { colors, spacing, radius, typography } from '../utils/theme';
 
@@ -25,11 +25,15 @@ export default function AuthScreen({ initialInviteCode }) {
   const [tab, setTab] = useState(initialInviteCode ? 'join' : 'parent');
   const [loading, setLoading] = useState(false);
 
-  // Parent fields
+  // Parent — create-account fields
   const [parentName, setParentName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+
+  // Parent — sign-in fields (completely separate state; never shares password with create)
+  const [signInMode, setSignInMode] = useState(false);
+  const [signInPassword, setSignInPassword] = useState('');
 
   // Join fields
   const [joinName, setJoinName] = useState('');
@@ -41,13 +45,30 @@ export default function AuthScreen({ initialInviteCode }) {
   async function handleCreateParent() {
     if (!parentName.trim()) return Alert.alert('Missing info', 'Please enter your name.');
     if (!email.trim()) return Alert.alert('Missing info', 'Please enter your email address.');
-    if (password.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
+    if (createPassword.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
     setLoading(true);
     try {
-      await createEmailAccount(email.trim(), password);
+      await createEmailAccount(email.trim(), createPassword);
       await createFamily(parentName.trim());
     } catch (e) {
-      Alert.alert('Sign up failed', friendlyError(e.code));
+      if (e.code === 'auth/email-already-in-use') {
+        Alert.alert(
+          'Email already registered',
+          'This email already has an account. Would you like to sign in instead?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Sign in',
+              onPress: () => {
+                setSignInPassword(''); // never carry over the create-account password
+                setSignInMode(true);
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Sign up failed', friendlyError(e.code));
+      }
     } finally {
       setLoading(false);
     }
@@ -55,14 +76,28 @@ export default function AuthScreen({ initialInviteCode }) {
 
   // ── Sign in existing parent ────────────────────────────────────────────────
   async function handleSignIn() {
-    if (!email.trim() || !password) return Alert.alert('Missing info', 'Enter email and password.');
+    if (!email.trim() || !signInPassword) return Alert.alert('Missing info', 'Enter email and password.');
     setLoading(true);
     try {
-      await signInWithEmail(email.trim(), password);
+      await signInWithEmail(email.trim(), signInPassword);
     } catch (e) {
       Alert.alert('Sign in failed', friendlyError(e.code));
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ── Forgot password ────────────────────────────────────────────────────────
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      Alert.alert('Enter email', 'Please enter your email address first.');
+      return;
+    }
+    try {
+      await sendPasswordReset(email.trim());
+      Alert.alert('Email sent', `Password reset link sent to ${email.trim()}.`);
+    } catch (e) {
+      Alert.alert('Error', friendlyError(e.code));
     }
   }
 
@@ -121,7 +156,7 @@ export default function AuthScreen({ initialInviteCode }) {
         </View>
 
         {/* ── Parent tab ── */}
-        {tab === 'parent' && (
+        {tab === 'parent' && !signInMode && (
           <View style={styles.form}>
             <Text style={styles.formTitle}>Set up your family</Text>
             <Text style={styles.formSub}>Create your account. Your kids join using your invite code.</Text>
@@ -158,8 +193,8 @@ export default function AuthScreen({ initialInviteCode }) {
                   style={[styles.input, { flex: 1, marginBottom: 0 }]}
                   placeholder="Choose a strong password"
                   placeholderTextColor={colors.textTertiary}
-                  value={password}
-                  onChangeText={setPassword}
+                  value={createPassword}
+                  onChangeText={setCreatePassword}
                   secureTextEntry={!showPass}
                   autoCapitalize="none"
                   textContentType="newPassword"
@@ -173,8 +208,54 @@ export default function AuthScreen({ initialInviteCode }) {
 
             <PrimaryBtn label="Create family account" onPress={handleCreateParent} loading={loading} />
 
-            <TouchableOpacity style={styles.secondaryLink} onPress={handleSignIn}>
+            <TouchableOpacity style={styles.secondaryLink} onPress={() => { setSignInPassword(''); setSignInMode(true); }}>
               <Text style={styles.secondaryLinkText}>Already have an account? Sign in →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Sign-in mode (inside parent tab) ── */}
+        {tab === 'parent' && signInMode && (
+          <View style={styles.form}>
+            <Text style={styles.formTitle}>Welcome back</Text>
+            <Text style={styles.formSub}>Sign in to your Dadboard account.</Text>
+
+            <Field label="Email address">
+              <TextInput
+                style={styles.input}
+                placeholder="you@email.com"
+                placeholderTextColor={colors.textTertiary}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="emailAddress"
+                autoComplete="email"
+              />
+            </Field>
+            <Field label="Password">
+              <TextInput
+                style={styles.input}
+                placeholder="Your password"
+                placeholderTextColor={colors.textTertiary}
+                value={signInPassword}
+                onChangeText={setSignInPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                textContentType="password"
+                autoComplete="password"
+              />
+            </Field>
+
+            <PrimaryBtn label="Sign in" onPress={handleSignIn} loading={loading} />
+
+            <TouchableOpacity style={styles.secondaryLink} onPress={handleForgotPassword}>
+              <Text style={styles.secondaryLinkText}>Forgot password? Send reset email →</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryLink} onPress={() => setSignInMode(false)}>
+              <Text style={[styles.secondaryLinkText, { color: colors.textTertiary }]}>← Create a new account</Text>
             </TouchableOpacity>
           </View>
         )}

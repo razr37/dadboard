@@ -45,7 +45,16 @@ export default function SwitchUserScreen({ navigation }) {
       setAdding(false);
       if (navigation.canGoBack()) navigation.goBack();
     } catch (e) {
-      Alert.alert('Error', `Could not add family member.\n\n${e.message}`);
+      const isPermission = e?.code === 'permission-denied'
+        || e?.message?.includes('Missing or insufficient permissions');
+      if (isPermission) {
+        Alert.alert(
+          'Permission denied',
+          'Please sign in to add family members, or use guest mode for local-only access.'
+        );
+      } else {
+        Alert.alert('Error', `Could not add family member.\n\n${e.message}`);
+      }
     }
   }
 
