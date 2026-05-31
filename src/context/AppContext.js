@@ -19,7 +19,7 @@ import {
   deleteRequest as fbDeleteRequest,
   addKidMember,
   subscribeMealPlans, setMemberMeals as fbSetMemberMeals,
-  savePushToken,
+  savePushToken, updateMemberDoc,
 } from '../utils/firebase';
 import {
   registerForPushNotifications,
@@ -259,6 +259,18 @@ export function AppProvider({ children }) {
     await AsyncStorage.setItem(LOCAL_KEYS.CURRENT_USER, JSON.stringify(user));
   }
 
+  async function updateCurrentUserName(name) {
+    const updated = { ...currentUser, name };
+    setCurrentUser(updated);
+    await AsyncStorage.setItem(LOCAL_KEYS.CURRENT_USER, JSON.stringify(updated));
+    if (isSynced && familyId && authUser) {
+      await updateMemberDoc(familyId, authUser.uid, { name });
+    } else {
+      const updatedFamily = family.map(m => m.id === currentUser.id ? { ...m, name } : m);
+      await saveLocalFamily(updatedFamily);
+    }
+  }
+
   async function setMealDay(memberId, date, { lunch, dinner }) {
     const weekStart = getWeekStartDate(date);
 
@@ -317,7 +329,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       authUser, familyId, isSynced, loaded,
-      family, currentUser, switchUser,
+      family, currentUser, switchUser, updateCurrentUserName,
       requests, addRequest, updateRequestStatus, deleteRequest,
       addFamilyMember, getTodayRequests, getPendingBuyRequests,
       mealPlans, setMealDay,

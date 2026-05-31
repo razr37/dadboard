@@ -23,6 +23,7 @@ import {
   EmailAuthProvider,
   linkWithCredential,
   deleteUser,
+  sendPasswordResetEmail as fbSendPasswordResetEmail,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -76,6 +77,10 @@ export function getCurrentUser() {
 
 export function onAuthStateChanged(callback) {
   return fbOnAuthStateChanged(auth, callback);
+}
+
+export async function sendPasswordReset(email) {
+  await fbSendPasswordResetEmail(auth, email);
 }
 
 export async function upgradeAnonymousToEmail(email, password) {
@@ -169,6 +174,10 @@ export function subscribeToMembers(familyId, callback) {
 
 export async function savePushToken(familyId, uid, token) {
   await updateDoc(doc(db, 'families', familyId, 'members', uid), { pushToken: token });
+}
+
+export async function updateMemberDoc(familyId, uid, data) {
+  await updateDoc(doc(db, 'families', familyId, 'members', uid), data);
 }
 
 export async function addKidMember(familyId, name, colorIndex, role = 'kid') {

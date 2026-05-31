@@ -4,6 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { startOfWeek, addDays } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, EmptyState } from '../components/UI';
@@ -11,26 +12,26 @@ import { Avatar, EmptyState } from '../components/UI';
 const DAY_NAMES_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// toISOString() returns UTC, which shifts the date back on UTC+ devices (e.g. SGT = UTC+8).
+// Always format dates from local year/month/day parts instead.
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function getWeekStart(date = new Date()) {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(startOfWeek(date, { weekStartsOn: 1 }));
 }
 
 function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T00:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().split('T')[0];
-  });
+  const base = new Date(weekStart + 'T00:00:00');
+  return Array.from({ length: 7 }, (_, i) => toLocalDateStr(addDays(base, i)));
 }
 
 function shiftWeek(weekStart, delta) {
-  const d = new Date(weekStart + 'T00:00:00');
-  d.setDate(d.getDate() + delta * 7);
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(addDays(new Date(weekStart + 'T00:00:00'), delta * 7));
 }
 
 function formatWeekRange(weekStart) {
@@ -44,7 +45,7 @@ export default function MealsScreen({ navigation }) {
   const { family, mealPlans } = useApp();
   const [weekStart, setWeekStart] = useState(getWeekStart());
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateStr(new Date());
   const weekDays = getWeekDays(weekStart);
   const isCurrentWeek = weekStart === getWeekStart();
 
@@ -100,64 +101,57 @@ export default function MealsScreen({ navigation }) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {!hasAnyPlans ? (
+        {!hasAnyPlans && (
           <EmptyState
             icon="🍽️"
             title="No meal plans yet"
             subtitle="Family members can set their weekly plans from the home screen."
           />
-        ) : (
-          weekDays.map((date, i) => {
-            const lunchMembers = getMembersForMeal(date, 'lunch');
-            const dinnerMembers = getMembersForMeal(date, 'dinner');
-            const hasPlans = lunchMembers.length > 0 || dinnerMembers.length > 0;
-            const isToday = date === todayStr;
-            const d = new Date(date + 'T00:00:00');
+        )}
 
-            return (
-              <View key={date} style={[styles.dayCard, shadow.sm, !hasPlans && styles.dayCardEmpty]}>
-                <View style={styles.dayHeader}>
-                  <View style={styles.dayLabelRow}>
-                    <Text style={[styles.dayName, isToday && { color: colors.primary }]}>
-                      {DAY_NAMES_LONG[i]}
-                    </Text>
-                    <Text style={styles.dayDate}>
-                      {d.getDate()} {MONTH_SHORT[d.getMonth()]}
-                    </Text>
-                  </View>
-                  {isToday && (
-                    <View style={styles.todayBadge}>
-                      <Text style={styles.todayBadgeText}>Today</Text>
-                    </View>
-                  )}
+        {weekDays.map((date, i) => {
+          const lunchMembers  = getMembersForMeal(date, 'lunch');
+          const dinnerMembers = getMembersForMeal(date, 'dinner');
+          const isToday = date === todayStr;
+          const d = new Date(date + 'T00:00:00');
+
+          return (
+            <View key={date} style={[styles.dayCard, shadow.sm, isToday && styles.dayCardToday]}>
+              <View style={styles.dayHeader}>
+                <View style={styles.dayLabelRow}>
+                  <Text style={[styles.dayName, isToday && { color: colors.primary }]}>
+                    {DAY_NAMES_LONG[i]}
+                  </Text>
+                  <Text style={styles.dayDate}>
+                    {d.getDate()} {MONTH_SHORT[d.getMonth()]}
+                  </Text>
                 </View>
-
-                {hasPlans ? (
-                  <>
-                    {lunchMembers.length > 0 && (
-                      <MealRow
-                        icon="sunny-outline"
-                        label="Lunch"
-                        members={lunchMembers}
-                        color={colors.warning}
-                      />
-                    )}
-                    {dinnerMembers.length > 0 && (
-                      <MealRow
-                        icon="moon-outline"
-                        label="Dinner"
-                        members={dinnerMembers}
-                        color={colors.info}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <Text style={styles.noPlans}>No plans set</Text>
+                {isToday && (
+                  <View style={styles.todayBadge}>
+                    <Text style={styles.todayBadgeText}>Today</Text>
+                  </View>
                 )}
               </View>
-            );
-          })
-        )}
+
+              <View style={styles.divider} />
+
+              <MealRow
+                icon="sunny-outline"
+                label="Lunch"
+                color={colors.warning}
+                eatingIn={lunchMembers}
+                allMembers={family}
+              />
+              <MealRow
+                icon="moon-outline"
+                label="Dinner"
+                color={colors.info}
+                eatingIn={dinnerMembers}
+                allMembers={family}
+              />
+            </View>
+          );
+        })}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -165,22 +159,39 @@ export default function MealsScreen({ navigation }) {
   );
 }
 
-function MealRow({ icon, label, members, color }) {
+function MealRow({ icon, label, color, eatingIn, allMembers }) {
+  const count = eatingIn.length;
+  const total = allMembers.length;
+  const countLabel = count === 0
+    ? 'No plans'
+    : count === total
+      ? 'All eating in'
+      : `${count}/${total} eating in`;
+
   return (
     <View style={styles.mealRow}>
-      <View style={styles.mealRowHead}>
+      <View style={styles.mealLabel}>
         <Ionicons name={icon} size={13} color={color} />
-        <Text style={[styles.mealLabel, { color }]}>{label}</Text>
-        <Text style={styles.mealCount}>({members.length})</Text>
+        <Text style={[styles.mealLabelText, { color }]}>{label}</Text>
       </View>
-      <View style={styles.memberList}>
-        {members.map(m => (
-          <View key={m.id} style={styles.memberChip}>
-            <Avatar name={m.name} colorIndex={m.colorIndex} size={22} />
-            <Text style={styles.memberName}>{m.name}</Text>
-          </View>
-        ))}
+
+      <View style={styles.avatarRow}>
+        {allMembers.map(m => {
+          const isEating = eatingIn.some(em => em.id === m.id);
+          if (isEating) {
+            return <Avatar key={m.id} name={m.name} colorIndex={m.colorIndex} size={28} />;
+          }
+          return (
+            <View key={m.id} style={styles.ghostAvatar}>
+              <Text style={styles.ghostInitial}>{m.name[0].toUpperCase()}</Text>
+            </View>
+          );
+        })}
       </View>
+
+      <Text style={[styles.countLabel, count === 0 && styles.countLabelEmpty]}>
+        {countLabel}
+      </Text>
     </View>
   );
 }
@@ -219,14 +230,20 @@ const styles = StyleSheet.create({
   todayLink: { alignSelf: 'center', marginTop: spacing.sm },
   todayLinkText: { fontSize: 13, color: colors.primary, fontWeight: '500' },
   scroll: { paddingTop: spacing.sm },
+
+  // Day card
   dayCard: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     padding: spacing.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  dayCardEmpty: { opacity: 0.45 },
+  dayCardToday: {
+    borderColor: colors.primary + '40',
+  },
   dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -243,22 +260,54 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   todayBadgeText: { fontSize: 11, fontWeight: '600', color: colors.primary },
-  noPlans: { ...typography.bodySmall, color: colors.textTertiary, fontStyle: 'italic' },
-  mealRow: { marginBottom: spacing.xs },
-  mealRowHead: {
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+
+  // Meal row: [icon+label] [avatars...] [count]
+  mealRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  mealLabel: { ...typography.label, fontWeight: '600' },
-  mealCount: { ...typography.caption, color: colors.textTertiary },
-  memberList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
-    paddingLeft: spacing.lg,
+    paddingVertical: spacing.xs,
   },
-  memberChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  memberName: { ...typography.bodySmall, color: colors.textSecondary },
+  mealLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    width: 60,
+  },
+  mealLabelText: { fontSize: 12, fontWeight: '600' },
+  avatarRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  ghostAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.45,
+  },
+  ghostInitial: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textTertiary,
+  },
+  countLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    minWidth: 72,
+    textAlign: 'right',
+  },
+  countLabelEmpty: {
+    color: colors.textTertiary,
+    fontStyle: 'italic',
+  },
 });

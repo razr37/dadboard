@@ -55,6 +55,9 @@ export default function DadHomeScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('SwitchUser')} style={styles.settingsBtn}>
             <Ionicons name="people-outline" size={22} color={colors.textSecondary} />
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsBtn}>
+            <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -65,20 +68,35 @@ export default function DadHomeScreen({ navigation }) {
       >
         {/* Summary strip */}
         <View style={styles.summaryStrip}>
-          <View style={styles.summaryItem}>
+          <TouchableOpacity
+            style={styles.summaryItem}
+            onPress={() => navigation.navigate('Schedule')}
+            activeOpacity={0.65}
+          >
             <Text style={styles.summaryNum}>{pickups.filter(p => p.status !== 'done').length}</Text>
             <Text style={styles.summaryLabel}>Pickups left</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
+          </TouchableOpacity>
           <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
+          <TouchableOpacity
+            style={styles.summaryItem}
+            onPress={() => navigation.navigate('Shopping')}
+            activeOpacity={0.65}
+          >
             <Text style={styles.summaryNum}>{buyItems.length}</Text>
             <Text style={styles.summaryLabel}>Buy requests</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
+          </TouchableOpacity>
           <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
+          <TouchableOpacity
+            style={styles.summaryItem}
+            onPress={() => navigation.navigate('SwitchUser')}
+            activeOpacity={0.65}
+          >
             <Text style={styles.summaryNum}>{family.filter(f => f.role === 'kid').length}</Text>
             <Text style={styles.summaryLabel}>Kids</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
+          </TouchableOpacity>
         </View>
 
         {/* Today's pickups */}

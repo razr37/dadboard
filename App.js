@@ -33,6 +33,7 @@ import KidHomeScreen from './src/screens/KidHomeScreen';
 import ScheduleScreen from './src/screens/ScheduleScreen';
 import ShoppingScreen from './src/screens/ShoppingScreen';
 import AddRequestScreen from './src/screens/AddRequestScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import SwitchUserScreen from './src/screens/SwitchUserScreen';
 import InviteScreen from './src/screens/InviteScreen';
 import PrivacySettingsScreen from './src/screens/PrivacySettingsScreen';
@@ -132,6 +133,7 @@ function AppNavigator({ consentGiven, onConsentAccepted }) {
       <Stack.Screen name="Invite" component={InviteScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Auth" component={AuthScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
       <Stack.Screen name="Shopping" component={ShoppingScreen} />
       <Stack.Screen name="Consent">

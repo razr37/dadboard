@@ -4,6 +4,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
@@ -30,11 +31,24 @@ export default function AddRequestScreen({ navigation, route }) {
 
   // Pickup fields
   const [activity, setActivity] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [time, setTime] = useState('15:00');
+  const [dateObj, setDateObj] = useState(new Date());
+  const [timeObj, setTimeObj] = useState(() => { const d = new Date(); d.setHours(15, 0, 0, 0); return d; });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [location, setLocation] = useState('');
   const [dropTo, setDropTo] = useState('Home');
   const [note, setNote] = useState('');
+
+  // Derived strings used in the request payload and display
+  const dateStr = (() => {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })();
+  const timeStr = `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`;
+  const displayDate = dateObj.toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const displayTime = timeObj.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   // Buy fields
   const [item, setItem] = useState('');
@@ -55,8 +69,8 @@ export default function AddRequestScreen({ navigation, route }) {
         fromName: currentUser.name,
         colorIndex: currentUser.colorIndex,
         activity: activity.trim(),
-        date,
-        time,
+        date: dateStr,
+        time: timeStr,
         location: location.trim(),
         dropTo: dropTo.trim() || 'Home',
         note: note.trim(),
@@ -142,25 +156,52 @@ export default function AddRequestScreen({ navigation, route }) {
 
             <View style={styles.row}>
               <Field label="Date" style={{ flex: 1 }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textTertiary}
-                  value={date}
-                  onChangeText={setDate}
-                />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerBtn]}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="calendar-outline" size={15} color={colors.textTertiary} />
+                  <Text style={styles.pickerText}>{displayDate}</Text>
+                </TouchableOpacity>
               </Field>
               <View style={{ width: spacing.md }} />
               <Field label="Time" style={{ flex: 1 }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="HH:MM"
-                  placeholderTextColor={colors.textTertiary}
-                  value={time}
-                  onChangeText={setTime}
-                />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerBtn]}
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={15} color={colors.textTertiary} />
+                  <Text style={styles.pickerText}>{displayTime}</Text>
+                </TouchableOpacity>
               </Field>
             </View>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={dateObj}
+                mode="date"
+                display="default"
+                minimumDate={new Date()}
+                onChange={(event, selected) => {
+                  setShowDatePicker(false);
+                  if (event.type !== 'dismissed' && selected) setDateObj(selected);
+                }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={timeObj}
+                mode="time"
+                is24Hour
+                display="default"
+                onChange={(event, selected) => {
+                  setShowTimePicker(false);
+                  if (event.type !== 'dismissed' && selected) setTimeObj(selected);
+                }}
+              />
+            )}
 
             <Field label="Pickup location" required>
               <TextInput
@@ -321,6 +362,8 @@ const styles = StyleSheet.create({
     fontSize: 15, color: colors.textPrimary,
   },
   textarea: { height: 80, textAlignVertical: 'top' },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  pickerText: { fontSize: 14, color: colors.textPrimary, flex: 1 },
   row: { flexDirection: 'row' },
   urgencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   urgencyBtn: {
