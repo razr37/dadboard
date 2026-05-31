@@ -9,7 +9,6 @@
     ],
     "android": {
       "package": "com.dadboard.app",
-      "googleServicesFile": "./android/app/google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#F07C2A"
@@ -20,7 +19,7 @@
       ]
     },
     "plugins": [
-      "@react-native-firebase/app",
+      "./plugins/withAndroidFixes",
       [
         "expo-notifications",
         {
