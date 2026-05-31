@@ -91,23 +91,37 @@ export default function SettingsScreen({ navigation }) {
   }
 
   async function performDelete() {
-    try {
-      if (isSynced && familyId) {
+    if (isSynced && familyId) {
+      try {
         await deleteAllFamilyData(familyId);
+      } catch (e) {
+        console.error('Delete cloud data failed:', e.message, e.code);
+        if (e?.code === 'auth/requires-recent-login') {
+          Alert.alert(
+            'Sign in required',
+            'For security, please sign out and sign back in before deleting your account.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        Alert.alert(
+          'Partially deleted',
+          `Local data will now be cleared.\n\nCloud data could not be deleted automatically (${e.message}) — it will be removed within 30 days.\n\nEmail dadboard.privacy@gmail.com for immediate removal.`,
+          [{ text: 'OK' }]
+        );
       }
+    }
+
+    try {
       await AsyncStorage.clear();
       await revokeConsent();
       await signOut();
     } catch (e) {
-      if (e?.code === 'auth/requires-recent-login') {
-        Alert.alert(
-          'Sign in required',
-          'For security, please sign out and sign back in before deleting your account.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert('Error', 'Could not delete account. Email privacy@dadboard.app for manual deletion.');
-      }
+      console.error('Local data clear failed:', e.message, e.code);
+      Alert.alert(
+        'Error',
+        `Could not clear local data.\n\nError: ${e.message}\n\nEmail dadboard.privacy@gmail.com for manual deletion.`
+      );
     }
   }
 

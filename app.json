@@ -5,7 +5,8 @@
     "version": "1.0.0",
     "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#F07C2A"
+      "backgroundColor": "#F07C2A",
+      "resizeMode": "contain"
     },
     "platforms": [
       "android"
@@ -19,6 +20,20 @@
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dadboard.app",
+              "pathPrefix": "/join"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "plugins": [

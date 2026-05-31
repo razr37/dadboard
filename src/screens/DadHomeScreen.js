@@ -10,7 +10,7 @@ import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, StatusBadge, SectionHeader, EmptyState, Card, formatTime, formatDate } from '../components/UI';
 
 export default function DadHomeScreen({ navigation }) {
-  const { getTodayRequests, getPendingBuyRequests, updateRequestStatus, deleteRequest, family } = useApp();
+  const { getTodayRequests, getPendingBuyRequests, updateRequestStatus, deleteRequest } = useApp();
   const [refreshing, setRefreshing] = useState(false);
 
   const pickups = getTodayRequests();
@@ -85,16 +85,6 @@ export default function DadHomeScreen({ navigation }) {
           >
             <Text style={styles.summaryNum}>{buyItems.length}</Text>
             <Text style={styles.summaryLabel}>Buy requests</Text>
-            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
-          </TouchableOpacity>
-          <View style={styles.summaryDivider} />
-          <TouchableOpacity
-            style={styles.summaryItem}
-            onPress={() => navigation.navigate('SwitchUser')}
-            activeOpacity={0.65}
-          >
-            <Text style={styles.summaryNum}>{family.filter(f => f.role === 'kid').length}</Text>
-            <Text style={styles.summaryLabel}>Kids</Text>
             <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
           </TouchableOpacity>
         </View>

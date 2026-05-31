@@ -9,6 +9,7 @@
 //   Local AsyncStorage used only as a loading cache.
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { startOfWeek } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import uuid from 'react-native-uuid';
 import {
@@ -36,34 +37,27 @@ const LOCAL_KEYS = {
   MEAL_PLANS: 'dadboard_meal_plans',
 };
 
-function getWeekStartDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toISOString().split('T')[0];
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-const SEED_FAMILY = [
-  { id: 'dad', name: 'Dad', role: 'parent', colorIndex: -1 },
-  { id: 'kid1', name: 'Ethan', role: 'kid', colorIndex: 0 },
-  { id: 'kid2', name: 'Ryan', role: 'kid', colorIndex: 1 },
-  { id: 'kid3', name: 'Mia', role: 'kid', colorIndex: 2 },
-];
+function getWeekStartDate(dateStr) {
+  return toLocalDateStr(startOfWeek(new Date(dateStr + 'T00:00:00'), { weekStartsOn: 1 }));
+}
 
-const SEED_REQUESTS = [
-  { id: 'r1', type: 'pickup', fromId: 'kid1', fromName: 'Ethan', colorIndex: 0, activity: 'Maths tuition', date: new Date().toISOString().split('T')[0], time: '15:30', location: 'Peirce Rd, Novena', dropTo: 'Home', note: 'Class ends at 3:30 sharp', status: 'pending', createdAt: Date.now() },
-  { id: 'r2', type: 'pickup', fromId: 'kid2', fromName: 'Ryan', colorIndex: 1, activity: 'Swimming', date: new Date().toISOString().split('T')[0], time: '17:00', location: 'SAFRA Yishun', dropTo: 'Home', note: '', status: 'pending', createdAt: Date.now() },
-  { id: 'r3', type: 'pickup', fromId: 'kid3', fromName: 'Mia', colorIndex: 2, activity: 'Piano', date: new Date().toISOString().split('T')[0], time: '13:00', location: 'Ang Mo Kio CC', dropTo: 'Home', note: '', status: 'done', createdAt: Date.now() },
-  { id: 'r4', type: 'buy', fromId: 'kid1', fromName: 'Ethan', colorIndex: 0, item: 'Milo tins (2x)', urgency: 'this weekend', note: '', status: 'pending', createdAt: Date.now() },
-  { id: 'r5', type: 'buy', fromId: 'kid2', fromName: 'Ryan', colorIndex: 1, item: 'New swimming goggles', urgency: 'ASAP', note: 'Speedo brand preferred', status: 'pending', createdAt: Date.now() },
-];
+// Default user shown before any AsyncStorage data loads. Ensures the parent
+// view renders correctly on first launch with no seeded family members.
+const DEFAULT_USER = { id: 'default', name: 'Dad', role: 'parent', colorIndex: -1 };
 
 export function AppProvider({ children }) {
   const [authUser, setAuthUser] = useState(null);       // Firebase user
   const [familyId, setFamilyId] = useState(null);       // Firestore familyId (null = guest)
-  const [family, setFamily] = useState(SEED_FAMILY);
-  const [requests, setRequests] = useState(SEED_REQUESTS);
-  const [currentUser, setCurrentUser] = useState(SEED_FAMILY[0]);
+  const [family, setFamily] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [currentUser, setCurrentUser] = useState(DEFAULT_USER);
   const [loaded, setLoaded] = useState(false);
   const [isSynced, setIsSynced] = useState(false);      // true = using Firestore
   const [mealPlans, setMealPlans] = useState({});       // { [memberId]: { [weekStart]: { [date]: { lunch, dinner } } } }

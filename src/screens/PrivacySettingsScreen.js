@@ -78,7 +78,7 @@ export default function PrivacySettingsScreen({ navigation }) {
         Alert.alert('Export ready', `Data saved to:\n${fileUri}\n\nOn a real device, this will open your share sheet.`);
       }
     } catch (e) {
-      Alert.alert('Export failed', `Could not export data. Please email privacy@dadboard.app for a manual export.\n\nError: ${e.message}`);
+      Alert.alert('Export failed', `Could not export data. Please email dadboard.privacy@gmail.com for a manual export.\n\nError: ${e.message}`);
     } finally {
       setExporting(false);
     }
@@ -88,10 +88,10 @@ export default function PrivacySettingsScreen({ navigation }) {
   function handleRestriction() {
     Alert.alert(
       'Restrict processing (GDPR Art. 18)',
-      'You can request that we stop processing your data while a dispute is resolved (e.g. you contest data accuracy, or you\'ve objected and we\'re verifying legitimate interests).\n\nTo request restriction, email privacy@dadboard.app with subject "Restriction of processing request".\n\nDuring restriction, we will only store your data, not actively process it.',
+      'You can request that we stop processing your data while a dispute is resolved (e.g. you contest data accuracy, or you\'ve objected and we\'re verifying legitimate interests).\n\nTo request restriction, email dadboard.privacy@gmail.com with subject "Restriction of processing request".\n\nDuring restriction, we will only store your data, not actively process it.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Email us', onPress: () => Linking.openURL('mailto:privacy@dadboard.app?subject=Restriction of processing request - Dadboard') },
+        { text: 'Email us', onPress: () => Linking.openURL('mailto:dadboard.privacy@gmail.com?subject=Restriction of processing request - Dadboard') },
       ]
     );
   }
@@ -103,7 +103,7 @@ export default function PrivacySettingsScreen({ navigation }) {
       'You can object to processing based on our legitimate interests (currently: crash reporting only).\n\nIf you object, we will cease that processing unless we can demonstrate compelling legitimate grounds that override your interests.\n\nNote: objecting to crash reporting means we cannot use anonymous crash data to fix app bugs.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Submit objection', onPress: () => Linking.openURL('mailto:privacy@dadboard.app?subject=Right to object - Dadboard GDPR Art.21') },
+        { text: 'Submit objection', onPress: () => Linking.openURL('mailto:dadboard.privacy@gmail.com?subject=Right to object - Dadboard GDPR Art.21') },
       ]
     );
   }
@@ -139,36 +139,47 @@ export default function PrivacySettingsScreen({ navigation }) {
   }
 
   async function performDelete() {
-    try {
-      // 1. Delete cloud data + Firebase Auth account (sync mode only).
-      //    deleteAllFamilyData() also calls deleteUser() which signs the account out.
-      if (isSynced && familyId) {
+    // Step 1: cloud deletion (sync mode only).
+    // Isolated so that a cloud failure never blocks local cleanup.
+    if (isSynced && familyId) {
+      try {
         await deleteAllFamilyData(familyId);
-      }
+      } catch (e) {
+        console.error('Delete cloud data failed:', e.message, e.code);
 
-      // 2. Wipe all local state (correct dadboard_* key names).
-      await AsyncStorage.clear();
+        if (e?.code === 'auth/requires-recent-login') {
+          // Do NOT clear local data — user must re-authenticate first,
+          // then try again so deletion completes atomically.
+          Alert.alert(
+            'Sign in required',
+            'For security, please sign out and sign back in before deleting your account.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
 
-      // 3. Revoke consent record (belt-and-suspenders after clear).
-      await revokeConsent();
-
-      // 4. Sign out the Firebase session (covers guest/anonymous mode;
-      //    for sync mode the account is already deleted but sign-out is harmless).
-      await signOut();
-
-      // Navigation is handled automatically: signOut() / deleteUser() triggers
-      // onAuthStateChanged(null) in Root → App renders AuthScreen without
-      // needing an explicit navigation.reset().
-    } catch (e) {
-      if (e?.code === 'auth/requires-recent-login') {
+        // Any other cloud error: warn the user but proceed with local cleanup.
         Alert.alert(
-          'Sign in required',
-          'For security, please sign out and sign back in before deleting your account.',
+          'Partially deleted',
+          `Local data will now be cleared.\n\nCloud data could not be deleted automatically (${e.message}) — it will be removed within 30 days.\n\nEmail dadboard.privacy@gmail.com for immediate removal.`,
           [{ text: 'OK' }]
         );
-      } else {
-        Alert.alert('Error', 'Could not delete all data. Email privacy@dadboard.app for manual deletion.');
       }
+    }
+
+    // Step 2: always clear local state, regardless of cloud outcome.
+    try {
+      await AsyncStorage.clear();
+      await revokeConsent();
+      await signOut();
+      // Navigation handled automatically: signOut() triggers onAuthStateChanged(null)
+      // in Root → App re-renders to AuthScreen.
+    } catch (e) {
+      console.error('Local data clear failed:', e.message, e.code);
+      Alert.alert(
+        'Error',
+        `Could not clear local data.\n\nError: ${e.message}\n\nEmail dadboard.privacy@gmail.com for manual deletion.`
+      );
     }
   }
 
@@ -255,12 +266,12 @@ export default function PrivacySettingsScreen({ navigation }) {
             <Ionicons name="mail-outline" size={18} color={colors.textTertiary} />
             <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>Contact us</Text>
           </View>
-          <TouchableOpacity onPress={() => Linking.openURL('mailto:privacy@dadboard.app')}>
-            <Text style={styles.contactEmail}>privacy@dadboard.app</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('mailto:dadboard.privacy@gmail.com')}>
+            <Text style={styles.contactEmail}>dadboard.privacy@gmail.com</Text>
           </TouchableOpacity>
           {isEU && (
-            <TouchableOpacity onPress={() => Linking.openURL('mailto:eurepresentative@dadboard.app')}>
-              <Text style={styles.contactEmail}>eurepresentative@dadboard.app (EU representative)</Text>
+            <TouchableOpacity onPress={() => Linking.openURL('mailto:dadboard.eu@gmail.com')}>
+              <Text style={styles.contactEmail}>dadboard.eu@gmail.com (EU representative)</Text>
             </TouchableOpacity>
           )}
           <Text style={[styles.contactNote]}>We respond within {isEU ? '1 month (GDPR)' : '30 days (PDPA)'}.</Text>

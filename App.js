@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Linking } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 
 // Dismiss the native splash immediately when the JS bundle loads.
@@ -75,29 +75,15 @@ function DadTabs() {
   );
 }
 
-function KidTabs() {
+function KidMain() {
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textTertiary,
-        tabBarStyle: {
-          backgroundColor: colors.bgCard,
-          borderTopColor: colors.border, borderTopWidth: 1,
-          paddingBottom: 8, paddingTop: 6, height: 64,
-        },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
-        tabBarIcon: ({ color, focused }) =>
-          <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />,
-      }}
-    >
-      <Tab.Screen name="Home" component={KidHomeScreen} />
-    </Tab.Navigator>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="KidHome" component={KidHomeScreen} />
+    </Stack.Navigator>
   );
 }
 
-function AppNavigator({ consentGiven, onConsentAccepted }) {
+function AppNavigator({ consentGiven, onConsentAccepted, initialInviteCode }) {
   const { currentUser, loaded } = useApp();
 
   if (!consentGiven) {
@@ -126,13 +112,15 @@ function AppNavigator({ consentGiven, onConsentAccepted }) {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isParent
         ? <Stack.Screen name="DadMain" component={DadTabs} />
-        : <Stack.Screen name="KidMain" component={KidTabs} />
+        : <Stack.Screen name="KidMain" component={KidMain} />
       }
       <Stack.Screen name="AddRequest" component={AddRequestScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="SwitchUser" component={SwitchUserScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Invite" component={InviteScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} options={{ presentation: 'modal' }} />
-      <Stack.Screen name="Auth" component={AuthScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="Auth" options={{ presentation: 'modal' }}>
+        {() => <AuthScreen initialInviteCode={initialInviteCode} />}
+      </Stack.Screen>
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
       <Stack.Screen name="Shopping" component={ShoppingScreen} />
@@ -143,10 +131,33 @@ function AppNavigator({ consentGiven, onConsentAccepted }) {
   );
 }
 
+// Extract invite code from a dadboard.app/join?code=... URL.
+function parseInviteCode(url) {
+  if (!url) return null;
+  try {
+    const match = url.match(/[?&]code=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch { return null; }
+}
+
 function Root() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const [consentGiven, setConsentGiven] = useState(null);
+  const [initialInviteCode, setInitialInviteCode] = useState(null);
+
+  // Deep link handling — captures invite code from https://dadboard.app/join?code=...
+  useEffect(() => {
+    Linking.getInitialURL().then(url => {
+      const code = parseInviteCode(url);
+      if (code) setInitialInviteCode(code);
+    });
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      const code = parseInviteCode(url);
+      if (code) setInitialInviteCode(code);
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(async (user) => {
@@ -174,7 +185,9 @@ function Root() {
       <NavigationContainer>
         <StatusBar style="dark" />
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="Auth">
+            {() => <AuthScreen initialInviteCode={initialInviteCode} />}
+          </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
     );
@@ -187,6 +200,7 @@ function Root() {
         <AppNavigator
           consentGiven={consentGiven}
           onConsentAccepted={() => setConsentGiven(true)}
+          initialInviteCode={initialInviteCode}
         />
       </NavigationContainer>
     </AppProvider>

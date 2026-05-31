@@ -1,6 +1,6 @@
 // src/screens/SwitchUserScreen.js
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
@@ -31,16 +31,22 @@ export default function SwitchUserScreen({ navigation }) {
     // goBack() must fire before switchUser() changes currentUser.role.
     // A role change (parent ↔ kid) causes AppNavigator to swap the entire stack,
     // detaching this modal's navigation context before goBack() could run.
-    navigation.goBack();
+    if (navigation.canGoBack()) navigation.goBack();
     switchUser(member);
   }
 
-  function handleAddMember() {
-    if (!newName.trim()) return;
-    addFamilyMember(newName.trim(), selectedRole);
-    setNewName('');
-    setSelectedRole('kid');
-    setAdding(false);
+  async function handleAddMember() {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      await addFamilyMember(name, selectedRole);
+      setNewName('');
+      setSelectedRole('kid');
+      setAdding(false);
+      if (navigation.canGoBack()) navigation.goBack();
+    } catch (e) {
+      Alert.alert('Error', `Could not add family member.\n\n${e.message}`);
+    }
   }
 
   function handleCancel() {
@@ -55,7 +61,7 @@ export default function SwitchUserScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+        <TouchableOpacity onPress={() => navigation.canGoBack() && navigation.goBack()} style={styles.closeBtn}>
           <Ionicons name="close" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
         <Text style={styles.title}>Who's using the app?</Text>

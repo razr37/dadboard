@@ -2,26 +2,29 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { startOfWeek, addDays } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, StatusBadge, EmptyState, PrimaryButton, formatTime, formatDate } from '../components/UI';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// toISOString() returns UTC, which shifts the date back on UTC+ devices (e.g. SGT = UTC+8).
+// Always derive date strings from local year/month/day parts.
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function getWeekStart(date = new Date()) {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(startOfWeek(date, { weekStartsOn: 1 }));
 }
 
 function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T00:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().split('T')[0];
-  });
+  const base = new Date(weekStart + 'T00:00:00');
+  return Array.from({ length: 7 }, (_, i) => toLocalDateStr(addDays(base, i)));
 }
 
 export default function KidHomeScreen({ navigation }) {
@@ -127,7 +130,7 @@ function QuickBtn({ icon, label, color, onPress }) {
 function MealsThisWeek({ memberId, kidColor }) {
   const weekStart = getWeekStart();
   const weekDays = getWeekDays(weekStart);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateStr(new Date());
 
   return (
     <View style={[styles.mealCard, shadow.sm]}>

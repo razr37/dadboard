@@ -21,8 +21,8 @@ import { colors, spacing, radius, typography } from '../utils/theme';
 
 const TABS = ['parent', 'join', 'guest'];
 
-export default function AuthScreen() {
-  const [tab, setTab] = useState('parent');
+export default function AuthScreen({ initialInviteCode }) {
+  const [tab, setTab] = useState(initialInviteCode ? 'join' : 'parent');
   const [loading, setLoading] = useState(false);
 
   // Parent fields
@@ -33,7 +33,7 @@ export default function AuthScreen() {
 
   // Join fields
   const [joinName, setJoinName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(initialInviteCode || '');
   const [joinEmail, setJoinEmail] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
 
@@ -183,7 +183,30 @@ export default function AuthScreen() {
         {tab === 'join' && (
           <View style={styles.form}>
             <Text style={styles.formTitle}>Join your family</Text>
-            <Text style={styles.formSub}>Ask Dad for the invite code from his app (Settings → Invite code).</Text>
+            {initialInviteCode ? (
+              <>
+                <Text style={styles.formSub}>Invite link detected. Create your account to join.</Text>
+                <View style={styles.detectedCodeBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                  <Text style={styles.detectedCodeText}>Invite code: {initialInviteCode}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.formSub}>Ask Dad for the invite link or code (Settings → Invite).</Text>
+                <Field label="Invite code from Dad">
+                  <TextInput
+                    style={[styles.input, styles.codeInput]}
+                    placeholder="Paste code here"
+                    placeholderTextColor={colors.textTertiary}
+                    value={inviteCode}
+                    onChangeText={setInviteCode}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </Field>
+              </>
+            )}
 
             <Field label="Your name">
               <TextInput
@@ -195,17 +218,6 @@ export default function AuthScreen() {
                 autoCapitalize="words"
                 textContentType="name"
                 autoComplete="name"
-              />
-            </Field>
-            <Field label="Invite code from Dad">
-              <TextInput
-                style={[styles.input, styles.codeInput]}
-                placeholder="Paste code here"
-                placeholderTextColor={colors.textTertiary}
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                autoCapitalize="none"
-                autoCorrect={false}
               />
             </Field>
             <Field label="Your email">
@@ -357,7 +369,13 @@ const styles = StyleSheet.create({
   tabLabelActive: { color: colors.primaryDark },
   form: { gap: 0 },
   formTitle: { ...typography.h3, color: colors.textPrimary, marginBottom: 4 },
-  formSub: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.xl, lineHeight: 20 },
+  formSub: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 20 },
+  detectedCodeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.successLight || '#D1FAE5', borderRadius: radius.md,
+    padding: spacing.sm, marginBottom: spacing.lg,
+  },
+  detectedCodeText: { ...typography.bodySmall, color: colors.success, fontWeight: '600', flex: 1 },
   field: { marginBottom: spacing.lg },
   fieldLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
   input: {

@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Share, Clipboard, Alert
+  Share, Clipboard, Alert, Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -43,22 +43,30 @@ export default function InviteScreen({ navigation }) {
     );
   }
 
-  const kids = family.filter(f => f.role === 'kid');
+  const inviteLink = `https://dadboard.app/join?code=${familyId}`;
+  const inviteMessage = `Join my Dadboard family!\n\nTap to join:\n${inviteLink}\n\nOr open the app and enter code: ${familyId}`;
 
-  async function handleCopy() {
-    Clipboard.setString(familyId);
+  async function handleCopyLink() {
+    Clipboard.setString(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   }
 
   async function handleShare() {
     try {
-      await Share.share({
-        message: `Join my Dadboard family!\n\nDownload Dadboard and use invite code:\n\n${familyId}\n\nSee you on the dashboard 🚗`,
-        title: 'Join my Dadboard',
-      });
+      await Share.share({ message: inviteMessage, title: 'Join my Dadboard' });
     } catch (e) {
       Alert.alert('Share failed', 'Could not open share sheet.');
+    }
+  }
+
+  async function handleWhatsApp() {
+    const url = `whatsapp://send?text=${encodeURIComponent(inviteMessage)}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      Alert.alert('WhatsApp not found', 'WhatsApp does not appear to be installed on this device.');
     }
   }
 
@@ -73,17 +81,24 @@ export default function InviteScreen({ navigation }) {
       </View>
 
       <View style={styles.scroll}>
-        {/* Invite code card */}
+        {/* Invite link card */}
         <View style={[styles.codeCard, shadow.md]}>
-          <Text style={styles.codeLabel}>Your family invite code</Text>
-          <Text style={styles.codeValue}>{familyId}</Text>
+          <Text style={styles.codeLabel}>Your family invite link</Text>
+          <Text style={styles.linkValue}>{inviteLink}</Text>
           <Text style={styles.codeHint}>
-            Share this code with your kids or spouse. They enter it in the Dadboard app under "Join family".
+            Send this link to your family. Tapping it opens the app (or Play Store) with the invite code pre-filled.
           </Text>
+
+          {/* WhatsApp — primary share action */}
+          <TouchableOpacity style={styles.whatsappBtn} onPress={handleWhatsApp}>
+            <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
+            <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
+          </TouchableOpacity>
+
           <View style={styles.codeActions}>
             <TouchableOpacity
               style={[styles.codeBtn, copied && styles.codeBtnSuccess]}
-              onPress={handleCopy}
+              onPress={handleCopyLink}
             >
               <Ionicons
                 name={copied ? 'checkmark-outline' : 'copy-outline'}
@@ -91,7 +106,7 @@ export default function InviteScreen({ navigation }) {
                 color={copied ? colors.success : colors.primary}
               />
               <Text style={[styles.codeBtnText, copied && { color: colors.success }]}>
-                {copied ? 'Copied!' : 'Copy code'}
+                {copied ? 'Copied!' : 'Copy link'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.codeBtn} onPress={handleShare}>
@@ -99,6 +114,9 @@ export default function InviteScreen({ navigation }) {
               <Text style={styles.codeBtnText}>Share via...</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Raw code fallback */}
+          <Text style={styles.rawCodeNote}>Manual code: <Text style={styles.rawCode}>{familyId}</Text></Text>
         </View>
 
         {/* Current family members */}
@@ -176,6 +194,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, letterSpacing: 1, textAlign: 'center',
     marginBottom: spacing.md, width: '100%',
   },
+  linkValue: {
+    fontSize: 12, color: colors.primaryDark,
+    backgroundColor: colors.primaryLight, padding: spacing.md,
+    borderRadius: radius.md, textAlign: 'center',
+    marginBottom: spacing.md, width: '100%',
+  },
+  whatsappBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, backgroundColor: '#25D366',
+    borderRadius: radius.md, paddingVertical: 12,
+    marginBottom: spacing.md, width: '100%',
+  },
+  whatsappBtnText: { color: colors.white, fontSize: 14, fontWeight: '700' },
+  rawCodeNote: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.sm, textAlign: 'center' },
+  rawCode: { fontFamily: 'monospace', color: colors.textSecondary },
   codeHint: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg, lineHeight: 20 },
   codeActions: { flexDirection: 'row', gap: spacing.md },
   codeBtn: {
