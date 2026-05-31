@@ -127,3 +127,60 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 - `google-services.json` at `android/app/google-services.json` is required at build time.
 - Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6).
 - Privacy policy URL referenced in AuthScreen: `dadboard.app/privacy` (to be hosted on GitHub Pages).
+
+---
+
+## Mandatory pre-session checklist
+Run this audit BEFORE doing anything else in every new session:
+
+```bash
+# 1. Node version (need 18+)
+node --version
+
+# 2. Disk space (need 5GB+ free)
+df -h | grep disk1s1
+
+# 3. Write access to working directory
+echo "test" > ~/Dadboard-work/write-test.txt && echo "✓ Write access OK" && rm ~/Dadboard-work/write-test.txt || echo "✗ Write access BLOCKED - use ~/Dadboard-work not ~/Documents"
+
+# 4. Expo SDK alignment
+cat node_modules/expo/package.json | grep '"version"' | head -1
+npx expo install --fix --check
+
+# 5. Required files exist
+ls android/app/google-services.json && echo "✓ google-services.json OK" || echo "✗ MISSING - copy from ~/Documents/Dadboard/android/app/"
+ls assets/icon.png && echo "✓ icon.png OK" || echo "✗ MISSING"
+ls assets/feature-graphic.png && echo "✓ feature-graphic.png OK" || echo "✗ MISSING"
+
+# 6. Firebase packages aligned
+cat node_modules/@react-native-firebase/app/package.json | grep '"version"' | head -1
+```
+
+## Build pipeline rules (learned the hard way)
+- ALWAYS run `npx expo install --fix` after any package change
+- ALWAYS run `npx expo prebuild --platform android --clean` after package changes
+- ALWAYS copy google-services.json back after `--clean` wipes it:
+  `cp ~/Documents/Dadboard/android/app/google-services.json ~/Dadboard-work/android/app/google-services.json`
+- NEVER hardcode sdkVersion in app.json - let EAS detect it
+- React Native Firebase version MUST match Expo SDK:
+  - Expo 51 → Firebase v19
+  - Expo 52 → Firebase v20+
+- Working directory is ~/Dadboard-work NOT ~/Documents/Dadboard (Documents has ACL restrictions)
+- If build fails, check logs at: https://expo.dev/accounts/razr73/projects/dadboard/builds
+
+## Known issues resolved
+- iconBackground color: defined in android/app/src/main/res/values/colors.xml
+- Duplicate Firebase classes: resolved via configurations.all in android/app/build.gradle
+- expo-asset and expo-font: must be explicitly installed for Expo 52
+- Expo SDK 51 + Firebase v20 = incompatible (Gradle plugin error)
+
+## If starting fresh on a new machine
+```bash
+# Correct baseline setup
+npx create-expo-app Dadboard --template blank
+cd Dadboard
+npx expo install @react-native-firebase/app@^19.3.0 @react-native-firebase/auth@^19.3.0 @react-native-firebase/firestore@^19.3.0
+npx expo install expo-notifications expo-secure-store expo-file-system expo-sharing expo-localization expo-device expo-asset expo-font
+npx expo install --fix
+eas build --platform android --profile development  # Test build BEFORE writing app code
+```
