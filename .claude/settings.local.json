@@ -10,7 +10,11 @@
       "Bash(python3 -c \"from PIL import Image; print\\('Pillow: OK'\\)\")",
       "Bash(python3 -c \"import struct, zlib, base64; print\\('stdlib OK'\\)\")",
       "Bash(npm list *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(node *)",
+      "Bash(npm uninstall *)",
+      "Bash(npx expo *)",
+      "Bash(git *)"
     ]
   }
 }

@@ -113,6 +113,20 @@ Kids on a shared parent device are created with `isLocalProfile: true` and a syn
 
 Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
 
+### Delete account (PrivacySettingsScreen.js)
+
+"Delete account & all data" satisfies PDPA right to erasure, GDPR Art.17, and Google Play account-deletion policy. The flow (`handleDeleteAll` → `confirmDeleteAll` → `performDelete`) uses double-confirmation alerts.
+
+**`performDelete` sequence**:
+1. `deleteAllFamilyData(familyId)` — sync mode only; deletes Firestore subcollections + `/users/{uid}` doc + the Firebase Auth account via `deleteUser()`
+2. `AsyncStorage.clear()` — wipes all local state (use `clear()`, not `multiRemove` with a key list that can go stale)
+3. `revokeConsent()` — belt-and-suspenders after `clear()`
+4. `signOut()` — covers guest/anonymous mode; harmless for sync mode after account deletion
+
+**No `navigation.reset()` needed**: `signOut()` / `deleteUser()` triggers `onAuthStateChanged(null)` in `Root`, which re-renders the entire tree to `AuthScreen`. Calling `navigation.reset()` after this would operate on a detached navigator and throw.
+
+**`auth/requires-recent-login`**: Firebase requires a recent session before `deleteUser()`. This error is caught and surfaces a prompt to sign out and back in.
+
 ### Design system
 
 All UI primitives are in `src/utils/theme.js`: `colors`, `spacing`, `radius`, `typography`, `shadow`. Reusable components (`Avatar`, `StatusBadge`, `Card`, `PrimaryButton`, etc.) are in `src/components/UI.js`. Always use theme tokens, never hardcode colors or sizes.
@@ -129,6 +143,7 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 **Play Store prep**
 - [x] Set up EAS — `eas.json` created with development/preview/production profiles; `app.json` updated with icon path, `googleServicesFile`, `adaptiveIcon`, notification plugin, and permissions
 - [x] Create app icon 512×512px and feature graphic 1024×500px — `generate_assets.py` generates both; run `python3 generate_assets.py` once to produce `assets/icon.png` and `assets/feature-graphic.png`
+- [x] Account deletion — PrivacySettingsScreen "Delete account & all data" deletes Firestore data + Auth account + local storage (Play Store policy requirement)
 - [ ] Run `eas init` in terminal to get the project ID, then paste it into `app.json` → `extra.eas.projectId`
 - [ ] Host privacy policy on GitHub Pages (`dadboard.app/privacy`)
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
@@ -176,6 +191,7 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 
 ## Known issues resolved
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first
+- PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
 - iconBackground color: defined in `android/app/src/main/res/values/colors.xml`
 - Duplicate Firebase classes: resolved via `configurations.all` in `android/app/build.gradle`
 - `expo-asset` and `expo-font`: must be explicitly installed for Expo 52
