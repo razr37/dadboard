@@ -44,6 +44,7 @@ Every public method on `AppContext` routes to the right backend automatically vi
 | `deleteRequest(id)` | Remove a request |
 | `addFamilyMember(name, role)` | Add a member; `role` is `'kid'` (default), `'spouse'`, or `'adult'`. Kids get a rotating `colorIndex` (0–4); adults get `-1` (parent orange). |
 | `switchUser(user)` | Change active profile (persisted to AsyncStorage in both modes) |
+| `updateCurrentUserName(name)` | Update the current user's display name — Firestore member doc (sync) or local family array (guest) + AsyncStorage |
 | `setMealDay(memberId, date, {lunch, dinner})` | Toggle meal presence for a member; optimistic update in both modes |
 | `getTodayRequests()` | Derived: today's pickups sorted by time |
 | `getPendingBuyRequests()` | Derived: pending `buy` requests |
@@ -112,6 +113,31 @@ Status cycle: `pending` → `onway` → `done` (tap on DadHomeScreen cycles thro
 Kids on a shared parent device are created with `isLocalProfile: true` and a synthetic `uid` (doc ID) — they have no Firebase Auth account of their own.
 
 Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
+
+### SettingsScreen.js
+
+Reached via the gear icon (⚙) in DadHomeScreen header. Registered as `presentation: 'modal'` in the root stack. Four sections:
+- **Account**: Edit profile name (inline `TextInput` toggle → `updateCurrentUserName`); Change password (`sendPasswordReset` → Firebase reset email)
+- **Family**: Invite family member → `InviteScreen`; Manage members → `SwitchUserScreen`
+- **Privacy**: Data & Privacy → `PrivacySettingsScreen`
+- **Account removal**: Delete account (double-confirm, same `performDelete` flow as `PrivacySettingsScreen`)
+
+`firebase.js` exports supporting this: `sendPasswordReset(email)`, `updateMemberDoc(familyId, uid, data)`.
+
+### Date handling — UTC offset gotcha
+
+**Never use `toISOString().split('T')[0]`** to get a local date string. On UTC+ devices (e.g. SGT = UTC+8), `toISOString()` returns the previous calendar day because it converts to UTC first. Always derive date strings from local parts:
+
+```js
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+```
+
+Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week starts. Both `MealsScreen` and `AppContext` use this pattern — keep them consistent or Firestore keys will diverge.
 
 ### Delete account (PrivacySettingsScreen.js)
 
@@ -188,6 +214,7 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - Working directory is `~/Dadboard-work` NOT `~/Documents/Dadboard` (Documents has ACL restrictions)
 - If build fails, check logs at: https://expo.dev/accounts/razr73/projects/dadboard/builds
 - Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6)
+- `@react-native-community/datetimepicker` is a native module — requires `expo prebuild` + a fresh native build after adding it
 
 ## Known issues resolved
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first
@@ -205,7 +232,7 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 npx create-expo-app Dadboard --template blank
 cd Dadboard
 npx expo install firebase @react-native-async-storage/async-storage
-npx expo install expo-notifications expo-secure-store expo-file-system expo-sharing expo-localization expo-device expo-asset expo-font
+npx expo install expo-notifications expo-secure-store expo-file-system expo-sharing expo-localization expo-device expo-asset expo-font @react-native-community/datetimepicker
 npx expo install --fix
 eas build --platform android --profile development  # Test build BEFORE writing app code
 ```
