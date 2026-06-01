@@ -260,7 +260,7 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 - [x] Set up EAS — `eas.json` created with development/preview/production profiles; `app.json` updated with icon path, `googleServicesFile`, `adaptiveIcon`, notification plugin, and permissions
 - [x] Create app icon 512×512px and feature graphic 1024×500px — `generate_assets.py` generates both; run `python3 generate_assets.py` once to produce `assets/icon.png` and `assets/feature-graphic.png`
 - [x] Account deletion — PrivacySettingsScreen "Delete account & all data" deletes Firestore data + Auth account + local storage (Play Store policy requirement)
-- [ ] Run `eas init` in terminal to get the project ID, then paste it into `app.json` → `extra.eas.projectId`
+- [x] EAS project ID set — `e53c6155-f61e-4b83-afa2-6dd50e2054af` in `app.json` → `extra.eas.projectId`
 - [ ] Host privacy policy on GitHub Pages (`dadboard.app/privacy`)
 - [ ] After domain is live: set `intentFilters[0].autoVerify: true` in `app.json` and host `/.well-known/assetlinks.json` for direct deep link opening
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
@@ -299,9 +299,8 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - ALWAYS copy google-services.json back after `--clean` wipes it:
   `cp ~/Documents/Dadboard/android/app/google-services.json ~/Dadboard-work/android/app/google-services.json`
 - NEVER hardcode sdkVersion in app.json — let EAS detect it
-- React Native Firebase version MUST match Expo SDK:
-  - Expo 51 → Firebase v19
-  - Expo 52 → Firebase v20+
+- Current versions: Expo SDK 52, Firebase JS SDK 12, Android `compileSdkVersion`/`targetSdkVersion` = 35
+- If ever switching to `@react-native-firebase` (not the current web JS SDK): version MUST match Expo SDK (Expo 51 → v19, Expo 52 → v20+)
 - Working directory is `~/Dadboard-work` NOT `~/Documents/Dadboard` (Documents has ACL restrictions)
 - If build fails, check logs at: https://expo.dev/accounts/razr73/projects/dadboard/builds
 - Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6)
