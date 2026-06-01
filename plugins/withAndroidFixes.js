@@ -33,6 +33,22 @@ function withOrangeColors(config) {
   });
 }
 
+function withTargetSdk35(config) {
+  return withDangerousMod(config, [
+    'android',
+    (mod) => {
+      const buildGradle = path.join(mod.modRequest.platformProjectRoot, 'build.gradle');
+      const contents = fs.readFileSync(buildGradle, 'utf8');
+      const patched = contents.replace(
+        /targetSdkVersion = Integer\.parseInt\(findProperty\('android\.targetSdkVersion'\) \?: '\d+'\)/,
+        "targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '35')"
+      );
+      fs.writeFileSync(buildGradle, patched);
+      return mod;
+    },
+  ]);
+}
+
 function withBlankSplashLogo(config) {
   return withDangerousMod(config, [
     'android',
@@ -54,5 +70,6 @@ function withBlankSplashLogo(config) {
 module.exports = (config) => {
   config = withOrangeColors(config);
   config = withBlankSplashLogo(config);
+  config = withTargetSdk35(config);
   return config;
 };

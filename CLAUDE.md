@@ -228,7 +228,9 @@ Registered in `app.json` as the first plugin. Runs during every `npx expo prebui
 
 - **`withOrangeColors`** — sets `iconBackground` and `splashscreen_background` to `#F07C2A` in `android/.../colors.xml`
 - **`withBlankSplashLogo`** — writes a 1×1 transparent PNG to `drawable/splashscreen_logo.png` (satisfies the XML reference expo-splash-screen injects even when no splash image is configured)
-If a build fails with a missing drawable resource, check this plugin first. Both mods use `withDangerousMod` so they have direct filesystem access to `platformProjectRoot`.
+- **`withTargetSdk35`** — patches `android/build.gradle` after Expo generates it, replacing the `targetSdkVersion` fallback with `'35'` (Expo's template defaults to `'34'`; this ensures every `prebuild --clean` produces the correct value)
+
+If a build fails with a missing drawable resource, check this plugin first. All three `withDangerousMod` mods have direct filesystem access to `platformProjectRoot`.
 
 **`"icon"` is intentionally absent from the `expo-notifications` plugin config in `app.json`** — including it would cause expo-notifications to inject `@drawable/notification_icon` meta-data into `AndroidManifest.xml`, but `drawable-*/` is gitignored so the PNG is never present on a clean build. Removing the `"icon"` property stops the injection entirely. The `"color"` property is kept; expo-notifications generates `@color/notification_icon_color` which is satisfied.
 
