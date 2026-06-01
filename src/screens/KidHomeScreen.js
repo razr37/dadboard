@@ -87,7 +87,7 @@ export default function KidHomeScreen({ navigation }) {
         <MealsThisWeek memberId={currentUser?.id} kidColor={kidColor} />
 
         {myRequests.length === 0 ? (
-          <EmptyState icon="✉️" title="No requests yet" subtitle="Tap 'New request' to ask Dad for a pickup or anything else." />
+          <EmptyState icon="💬" title="No requests yet" subtitle="Tap Pickup, Buy item or Other above to send a request to Dad." />
         ) : (
           <>
             {pending.length > 0 && (
