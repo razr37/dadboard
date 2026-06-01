@@ -158,17 +158,15 @@ export default function ConsentScreen({ onAccept }) {
   }
 
   async function handleAccept() {
-    console.log('[ConsentScreen] handleAccept called, onAccept type:', typeof onAccept);
-    setAccepting(true);
+    Alert.alert('Debug 1', 'handleAccept called — onAccept type: ' + typeof onAccept);
     try {
       await recordConsent(regionInfo);
-      onAccept(); // navigate on success
+      Alert.alert('Debug 2', 'recordConsent done');
     } catch (e) {
-      console.error('[ConsentScreen] recordConsent failed:', e);
-      onAccept(); // still navigate — never block the user due to a storage error
-    } finally {
-      setAccepting(false); // safety net: reset spinner if component stays mounted
+      Alert.alert('Debug 2', 'recordConsent FAILED: ' + e.message);
     }
+    Alert.alert('Debug 3', 'onAccept calling now');
+    onAccept();
   }
 
   function handleDecline() {
@@ -338,7 +336,7 @@ export default function ConsentScreen({ onAccept }) {
         <TouchableOpacity
           style={[styles.acceptBtn, !canProceed && styles.acceptBtnDisabled]}
           onPress={handleAccept}
-          disabled={!canProceed || accepting}
+          disabled={!canProceed}
           activeOpacity={0.85}
         >
           {accepting ? (
