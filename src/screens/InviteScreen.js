@@ -1,41 +1,37 @@
 // src/screens/InviteScreen.js
-// Dadboard — Dad shares the familyId as an invite code.
-// Family members enter this code in AuthScreen → Join family tab.
+// Dadboard — two invite paths:
+//   1. Telegram bot — no app needed, any phone
+//   2. Dadboard app — full experience, Play Store
 
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Share, Clipboard, Alert, Linking
+  Clipboard, Alert, Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 
+const TELEGRAM_BOT = 'DadboardBot';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.dadboard.app';
+
 export default function InviteScreen({ navigation }) {
   const { familyId, isSynced, family } = useApp();
-  const [copied, setCopied] = useState(false);
+  const [copiedTelegram, setCopiedTelegram] = useState(false);
+  const [copiedApp, setCopiedApp] = useState(false);
 
-  // Guest mode — no invite code available
+  // ── Guest mode gate ────────────────────────────────────────────────────────
   if (!isSynced || !familyId) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Invite family</Text>
-          <View style={{ width: 36 }} />
-        </View>
+        <Header onBack={() => navigation.goBack()} />
         <View style={styles.guestWall}>
           <Ionicons name="lock-closed-outline" size={48} color={colors.textTertiary} />
           <Text style={styles.guestTitle}>Account required</Text>
           <Text style={styles.guestBody}>
             Create a free Dadboard account to invite your family members and sync across devices.
           </Text>
-          <TouchableOpacity
-            style={styles.upgradeBtn}
-            onPress={() => navigation.navigate('Auth')}
-          >
+          <TouchableOpacity style={styles.upgradeBtn} onPress={() => navigation.navigate('Auth')}>
             <Text style={styles.upgradeBtnText}>Create account</Text>
           </TouchableOpacity>
         </View>
@@ -43,25 +39,20 @@ export default function InviteScreen({ navigation }) {
     );
   }
 
-  const inviteLink = `https://dadboard.app/join?code=${familyId}`;
-  const inviteMessage = `Join my Dadboard family!\n\nTap to join:\n${inviteLink}\n\nOr open the app and enter code: ${familyId}`;
+  // ── Invite links ────────────────────────────────────────────────────────────
+  const telegramLink = `https://t.me/${TELEGRAM_BOT}?start=${familyId}`;
+  const telegramMessage =
+    `Join our family on Dadboard! 🚗\n\n` +
+    `Send your pickup requests, shopping needs and meal plans directly to Dad — no app needed, just Telegram.\n\n` +
+    `Tap to start: ${telegramLink}`;
 
-  async function handleCopyLink() {
-    Clipboard.setString(inviteLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  }
+  const appMessage =
+    `Join my Dadboard family! 🚗\n\n` +
+    `Download the app: ${PLAY_STORE_URL}\n\n` +
+    `Then tap "Join family" and enter code: ${familyId}`;
 
-  async function handleShare() {
-    try {
-      await Share.share({ message: inviteMessage, title: 'Join my Dadboard' });
-    } catch (e) {
-      Alert.alert('Share failed', 'Could not open share sheet.');
-    }
-  }
-
-  async function handleWhatsApp() {
-    const url = `whatsapp://send?text=${encodeURIComponent(inviteMessage)}`;
+  async function handleWhatsApp(message) {
+    const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
     const canOpen = await Linking.canOpenURL(url);
     if (canOpen) {
       await Linking.openURL(url);
@@ -70,56 +61,92 @@ export default function InviteScreen({ navigation }) {
     }
   }
 
+  async function handleCopy(text, setter) {
+    Clipboard.setString(text);
+    setter(true);
+    setTimeout(() => setter(false), 2500);
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Invite family</Text>
-        <View style={{ width: 36 }} />
-      </View>
+      <Header onBack={() => navigation.goBack()} />
 
-      <ScrollView showsVerticalScrollIndicator contentContainerStyle={styles.scroll}>
-        {/* Invite link card */}
-        <View style={[styles.codeCard, shadow.md]}>
-          <Text style={styles.codeLabel}>Your family invite link</Text>
-          <Text style={styles.linkValue}>{inviteLink}</Text>
-          <Text style={styles.codeHint}>
-            Send this link to your family. Tapping it opens the app (or Play Store) with the invite code pre-filled.
-          </Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-          {/* WhatsApp — primary share action */}
-          <TouchableOpacity style={styles.whatsappBtn} onPress={handleWhatsApp}>
+        {/* ── Telegram invite ──────────────────────────────────────────────── */}
+        <View style={[styles.card, shadow.md]}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.cardIconBg, { backgroundColor: '#E8F4FD' }]}>
+              <Ionicons name="paper-plane-outline" size={22} color="#229ED9" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Invite via Telegram Bot</Text>
+              <Text style={styles.cardSub}>For family members on any phone — no app needed</Text>
+            </View>
+          </View>
+
+          <View style={styles.linkBox}>
+            <Text style={styles.linkText} numberOfLines={1}>{telegramLink}</Text>
+          </View>
+
+          <TouchableOpacity style={styles.whatsappBtn} onPress={() => handleWhatsApp(telegramMessage)}>
             <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
             <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
           </TouchableOpacity>
 
-          <View style={styles.codeActions}>
-            <TouchableOpacity
-              style={[styles.codeBtn, copied && styles.codeBtnSuccess]}
-              onPress={handleCopyLink}
-            >
-              <Ionicons
-                name={copied ? 'checkmark-outline' : 'copy-outline'}
-                size={16}
-                color={copied ? colors.success : colors.primary}
-              />
-              <Text style={[styles.codeBtnText, copied && { color: colors.success }]}>
-                {copied ? 'Copied!' : 'Copy link'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.codeBtn} onPress={handleShare}>
-              <Ionicons name="share-outline" size={16} color={colors.primary} />
-              <Text style={styles.codeBtnText}>Share via...</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Raw code fallback */}
-          <Text style={styles.rawCodeNote}>Manual code: <Text style={styles.rawCode}>{familyId}</Text></Text>
+          <TouchableOpacity
+            style={[styles.copyBtn, copiedTelegram && styles.copyBtnDone]}
+            onPress={() => handleCopy(telegramLink, setCopiedTelegram)}
+          >
+            <Ionicons
+              name={copiedTelegram ? 'checkmark-outline' : 'copy-outline'}
+              size={15}
+              color={copiedTelegram ? colors.success : colors.primary}
+            />
+            <Text style={[styles.copyBtnText, copiedTelegram && { color: colors.success }]}>
+              {copiedTelegram ? 'Copied!' : 'Copy link'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Current family members */}
+        {/* ── App invite ───────────────────────────────────────────────────── */}
+        <View style={[styles.card, shadow.md]}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.cardIconBg, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="phone-portrait-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Invite via Dadboard App</Text>
+              <Text style={styles.cardSub}>For family members who want the full app experience</Text>
+            </View>
+          </View>
+
+          <Text style={styles.codeLabel}>Family invite code</Text>
+          <View style={styles.codeBox}>
+            <Text style={styles.codeText}>{familyId}</Text>
+          </View>
+
+          <TouchableOpacity style={styles.whatsappBtn} onPress={() => handleWhatsApp(appMessage)}>
+            <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
+            <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.copyBtn, copiedApp && styles.copyBtnDone]}
+            onPress={() => handleCopy(familyId, setCopiedApp)}
+          >
+            <Ionicons
+              name={copiedApp ? 'checkmark-outline' : 'copy-outline'}
+              size={15}
+              color={copiedApp ? colors.success : colors.primary}
+            />
+            <Text style={[styles.copyBtnText, copiedApp && { color: colors.success }]}>
+              {copiedApp ? 'Copied!' : 'Copy code'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Family members ───────────────────────────────────────────────── */}
         <Text style={styles.sectionLabel}>Family members ({family.length})</Text>
         {family.map(member => (
           <View key={member.id || member.uid} style={[styles.memberRow, shadow.sm]}>
@@ -149,26 +176,19 @@ export default function InviteScreen({ navigation }) {
           </View>
         ))}
 
-        {/* How it works */}
-        <View style={styles.howCard}>
-          <Text style={styles.howTitle}>How joining works</Text>
-          <HowStep num="1" text="Family member downloads Dadboard" />
-          <HowStep num="2" text='They tap "Join family" and enter the code above' />
-          <HowStep num="3" text="They create their account and appear in your family list" />
-          <HowStep num="4" text="They can submit pickup requests straight to your dashboard" />
-        </View>
       </ScrollView>
     </View>
   );
 }
 
-function HowStep({ num, text }) {
+function Header({ onBack }) {
   return (
-    <View style={styles.howStep}>
-      <View style={styles.howNum}>
-        <Text style={styles.howNumText}>{num}</Text>
-      </View>
-      <Text style={styles.howText}>{text}</Text>
+    <View style={styles.header}>
+      <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+        <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+      </TouchableOpacity>
+      <Text style={styles.title}>Invite family</Text>
+      <View style={{ width: 36 }} />
     </View>
   );
 }
@@ -180,67 +200,90 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingTop: 56, paddingBottom: spacing.md,
     backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  backBtn: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  backBtn: {
+    width: 36, height: 36, borderRadius: radius.full,
+    backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center',
+  },
   title: { ...typography.h3, color: colors.textPrimary },
   scroll: { padding: spacing.lg, paddingBottom: 100 },
-  codeCard: {
+
+  // ── Cards ──────────────────────────────────────────────────────────────────
+  card: {
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.xl, marginBottom: spacing.xl, alignItems: 'center',
+    padding: spacing.lg, marginBottom: spacing.lg,
   },
-  codeLabel: { ...typography.label, color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.md },
-  codeValue: {
+  cardHeader: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    gap: spacing.md, marginBottom: spacing.lg,
+  },
+  cardIconBg: {
+    width: 44, height: 44, borderRadius: radius.md,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  cardTitle: { ...typography.body, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  cardSub: { ...typography.caption, color: colors.textSecondary, lineHeight: 17 },
+
+  // ── Telegram link box ──────────────────────────────────────────────────────
+  linkBox: {
+    backgroundColor: colors.bg, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  linkText: { fontSize: 12, color: colors.textSecondary, fontFamily: 'monospace' },
+
+  // ── App code box ───────────────────────────────────────────────────────────
+  codeLabel: { ...typography.caption, color: colors.textTertiary, textTransform: 'uppercase', marginBottom: spacing.sm },
+  codeBox: {
+    backgroundColor: colors.primaryLight, borderRadius: radius.md,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
+    alignItems: 'center', marginBottom: spacing.md,
+  },
+  codeText: {
     fontSize: 13, fontFamily: 'monospace', color: colors.primaryDark,
-    backgroundColor: colors.primaryLight, padding: spacing.md,
-    borderRadius: radius.md, letterSpacing: 1, textAlign: 'center',
-    marginBottom: spacing.md, width: '100%',
+    letterSpacing: 1,
   },
-  linkValue: {
-    fontSize: 12, color: colors.primaryDark,
-    backgroundColor: colors.primaryLight, padding: spacing.md,
-    borderRadius: radius.md, textAlign: 'center',
-    marginBottom: spacing.md, width: '100%',
-  },
+
+  // ── Shared action buttons ──────────────────────────────────────────────────
   whatsappBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: spacing.sm, backgroundColor: '#25D366',
-    borderRadius: radius.md, paddingVertical: 12,
-    marginBottom: spacing.md, width: '100%',
+    borderRadius: radius.md, paddingVertical: 12, marginBottom: spacing.sm,
   },
   whatsappBtnText: { color: colors.white, fontSize: 14, fontWeight: '700' },
-  rawCodeNote: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.sm, textAlign: 'center' },
-  rawCode: { fontFamily: 'monospace', color: colors.textSecondary },
-  codeHint: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg, lineHeight: 20 },
-  codeActions: { flexDirection: 'row', gap: spacing.md },
-  codeBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderRadius: radius.full, borderWidth: 1, borderColor: colors.primary,
+  copyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, paddingVertical: spacing.sm,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.primary,
     backgroundColor: colors.primaryLight,
   },
-  codeBtnSuccess: { borderColor: colors.success, backgroundColor: colors.successLight },
-  codeBtnText: { fontSize: 13, fontWeight: '600', color: colors.primary },
-  sectionLabel: { ...typography.label, color: colors.textTertiary, textTransform: 'uppercase', marginBottom: spacing.sm },
+  copyBtnDone: { borderColor: colors.success, backgroundColor: colors.successLight },
+  copyBtnText: { fontSize: 13, fontWeight: '600', color: colors.primary },
+
+  // ── Family members ─────────────────────────────────────────────────────────
+  sectionLabel: {
+    ...typography.label, color: colors.textTertiary,
+    textTransform: 'uppercase', marginBottom: spacing.sm,
+  },
   memberRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.bgCard, borderRadius: radius.md,
     padding: spacing.md, marginBottom: spacing.sm,
   },
-  memberAvatar: { width: 40, height: 40, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
+  memberAvatar: {
+    width: 40, height: 40, borderRadius: radius.full,
+    alignItems: 'center', justifyContent: 'center',
+  },
   memberAvatarText: { fontSize: 16, fontWeight: '700' },
   memberName: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   memberRole: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
-  ownerBadge: { backgroundColor: colors.primaryLight, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  ownerBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primaryDark },
-  howCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.lg, marginTop: spacing.lg,
-    borderWidth: 0.5, borderColor: colors.border,
+  ownerBadge: {
+    backgroundColor: colors.primaryLight, borderRadius: radius.full,
+    paddingHorizontal: 8, paddingVertical: 2,
   },
-  howTitle: { ...typography.body, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.md },
-  howStep: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.sm },
-  howNum: { width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
-  howNumText: { fontSize: 11, fontWeight: '700', color: colors.white },
-  howText: { ...typography.bodySmall, color: colors.textSecondary, flex: 1, lineHeight: 20 },
+  ownerBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primaryDark },
+
+  // ── Guest wall ─────────────────────────────────────────────────────────────
   guestWall: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   guestTitle: { ...typography.h3, color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm },
   guestBody: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: spacing.xl },
