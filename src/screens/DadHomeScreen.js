@@ -45,6 +45,7 @@ export default function DadHomeScreen({ navigation }) {
 
   const pickups = getTodayRequests();
   const buyItems = getPendingBuyRequests();
+  const otherItems = requests.filter(r => r.type === 'other' && (!r.status || r.status === 'pending'));
   const pendingCount = pickups.filter(p => p.status === 'pending').length;
 
   // Summary strip counts
@@ -183,6 +184,20 @@ export default function DadHomeScreen({ navigation }) {
           ))
         )}
 
+        {/* Other requests — only rendered when there are pending items */}
+        {otherItems.length > 0 && (
+          <>
+            <SectionHeader title="Other requests" />
+            {otherItems.map(req => (
+              <OtherCard
+                key={req.id}
+                req={req}
+                onDone={() => updateRequestStatus(req.id, 'done')}
+              />
+            ))}
+          </>
+        )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
     </View>
@@ -308,6 +323,24 @@ function BuyCard({ req, onDone, onDelete }) {
         <Text style={styles.buyItem}>{req.item}</Text>
         <Text style={styles.buyMeta}>{req.fromName} · {req.urgency}</Text>
         {req.note ? <Text style={styles.noteText}>{req.note}</Text> : null}
+      </View>
+      <TouchableOpacity style={styles.checkBtn} onPress={onDone}>
+        <Ionicons name="checkmark" size={16} color={colors.success} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function OtherCard({ req, onDone }) {
+  const ts = req.createdAt
+    ? new Date(req.createdAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  return (
+    <View style={[styles.buyCard, shadow.sm]}>
+      <Avatar name={req.fromName} colorIndex={req.colorIndex} size={30} />
+      <View style={styles.buyBody}>
+        <Text style={styles.buyItem}>{req.message || req.rawMessage || '(no message)'}</Text>
+        <Text style={styles.buyMeta}>{req.fromName}{ts ? ` · ${ts}` : ''}</Text>
       </View>
       <TouchableOpacity style={styles.checkBtn} onPress={onDone}>
         <Ionicons name="checkmark" size={16} color={colors.success} />
