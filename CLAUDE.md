@@ -60,6 +60,8 @@ import { initializeAuth, ... } from 'firebase/auth';
 
 All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `joinFamily` (kid joins via invite code), `deleteAllFamilyData` (GDPR/PDPA right to erasure — deletes all subcollections + Auth account).
 
+**`subscribeToFamilyId(uid, callback)`** — real-time `onSnapshot` listener on `/users/{uid}` that replaces the old one-shot `getFamilyId()` read in AppContext. Used to handle the race condition where `createFamily()` commits its Firestore batch *after* AppContext's `onAuthStateChanged` fires (new-account sign-up flow). When the batch lands, the snapshot fires a second time and switches AppContext from guest → sync mode without requiring a sign-out. On `permission-denied` (anonymous users) it calls `callback(null)` silently. **Do not revert this to a one-shot `getDoc` call.**
+
 ### Boot sequence (App.js)
 
 `Root` uses three boolean states: `ready`, `authed`, `consented`. Renders sequentially:
@@ -202,6 +204,16 @@ Both `MealsScreen` (Dad) and `KidHomeScreen` (`MealsThisWeek` component) use a `
 
 **Independent try/catch blocks**: cloud deletion (`deleteAllFamilyData`) and local cleanup (`AsyncStorage.clear` + `revokeConsent` + `signOut`) are in separate try/catch blocks. Local cleanup always runs even if Firestore/Firebase fails. The same pattern is used in both `PrivacySettingsScreen` and `SettingsScreen`.
 
+### Config plugin (plugins/withAndroidFixes.js)
+
+Registered in `app.json` as the first plugin. Runs during every `npx expo prebuild` (including `--clean`) and writes three things that are gitignored and would otherwise be missing:
+
+- **`withOrangeColors`** — sets `iconBackground` and `splashscreen_background` to `#F07C2A` in `android/.../colors.xml`
+- **`withBlankSplashLogo`** — writes a 1×1 transparent PNG to `drawable/splashscreen_logo.png` (satisfies the XML reference expo-splash-screen injects even when no splash image is configured)
+- **`withNotificationIcon`** — copies `assets/icon.png` into `drawable-{m,h,xh,xxh,xxxh}dpi/notification_icon.png` (required by the `expo-notifications` plugin; the `drawable-*/` tree is gitignored)
+
+If a build fails with a missing drawable resource, check this plugin first. All three mods use `withDangerousMod` so they have direct filesystem access to `platformProjectRoot`.
+
 ### Design system
 
 All UI primitives are in `src/utils/theme.js`: `colors`, `spacing`, `radius`, `typography`, `shadow`. Reusable components (`Avatar`, `StatusBadge`, `Card`, `PrimaryButton`, etc.) are in `src/components/UI.js`. Always use theme tokens, never hardcode colors or sizes.
@@ -286,6 +298,8 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - ConsentScreen: `en-GB` locale falsely triggered GDPR on SG devices where `Localization.region` returns null — fixed by requiring explicit `Localization.region` for `isEU`
 - ConsentScreen: "I agree" button tapped but did nothing — `handleAccept` had no try/catch; AsyncStorage throw in `recordConsent` silently blocked `onAccept()`
 - ConsentScreen: button stayed greyed out after ticking all checkboxes — scroll threshold tightened to `-100px` and 10s fallback timer added
+- AppContext / createFamily: new-account sign-up left app stuck in guest mode — `onAuthStateChanged` in AppContext fired before `createFamily()` committed its Firestore batch; `getFamilyId()` returned null and AppContext settled into guest mode permanently; fixed by replacing the one-shot `getDoc` read with `subscribeToFamilyId()` (`onSnapshot`), which fires again when the batch lands and switches to sync mode automatically
+- AuthScreen handleCreateParent: Firestore errors from `createFamily()` were shown as "Something went wrong" — auth and family-creation errors were in one try/catch; split into separate blocks so `createFamily` errors show `e.message` / `e.code` directly
 
 ## Session management
 - Each Claude.ai chat session has a context limit
