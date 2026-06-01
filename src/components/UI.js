@@ -1,6 +1,7 @@
 // src/components/UI.js
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 
 // Kid color avatar circle
@@ -115,6 +116,65 @@ export function formatDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
 }
+
+// TextInput with an inline × clear button. Supports an optional bookmark-save
+// icon for place-field favourites (used by AddRequestScreen).
+// Pass wrapperStyle to control layout of the outer container (e.g. flex:1).
+export function ClearableInput({
+  value, onChangeText, onSave, isSaved,
+  style, wrapperStyle, multiline, numberOfLines, ...props
+}) {
+  const hasContent = value?.length > 0;
+  const showSave   = !!onSave && value?.trim().length > 0 && !isSaved;
+  const extraRight = hasContent ? (showSave ? 72 : 44) : 0;
+
+  return (
+    <View style={[{ position: 'relative' }, wrapperStyle]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        style={[style, hasContent && { paddingRight: extraRight }]}
+        multiline={multiline}
+        numberOfLines={numberOfLines}
+        textAlignVertical={multiline ? 'top' : undefined}
+        {...props}
+      />
+      <View style={[clearableStyles.actions, multiline && { top: 10, bottom: undefined }]}>
+        {showSave && (
+          <TouchableOpacity
+            onPress={onSave}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Ionicons name="bookmark-outline" size={15} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        {hasContent && (
+          <TouchableOpacity
+            onPress={() => onChangeText('')}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <View style={clearableStyles.circle}>
+              <Text style={clearableStyles.x}>×</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const clearableStyles = StyleSheet.create({
+  actions: {
+    position: 'absolute', right: 10, top: 0, bottom: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+  },
+  circle: {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: colors.textTertiary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  x: { color: colors.white, fontSize: 12, fontWeight: '700', lineHeight: 14 },
+});
 
 const styles = StyleSheet.create({
   avatar: {

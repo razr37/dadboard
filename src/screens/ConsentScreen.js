@@ -18,6 +18,7 @@ import * as Localization from 'expo-localization';
 import { colors, spacing, radius, typography } from '../utils/theme';
 
 export const CONSENT_KEY = 'dadboard_consent_v1';
+const REGION_OVERRIDE_KEY = 'dadboard_region_override';
 
 // EU/EEA country codes + UK
 const EU_REGIONS = new Set([
@@ -87,14 +88,24 @@ export async function recordConsent(regionInfo) {
 }
 
 export async function revokeConsent() {
-  await AsyncStorage.multiRemove([CONSENT_KEY, 'dadboard_consent_meta']);
+  await AsyncStorage.multiRemove([CONSENT_KEY, 'dadboard_consent_meta', REGION_OVERRIDE_KEY]);
 }
 
 export default function ConsentScreen({ onAccept }) {
-  const [regionInfo] = useState(() => detectRegion());
+  const [regionInfo, setRegionInfo] = useState(() => detectRegion());
   const [scrolledToBottom, setScrolledToBottom] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [showFullPDPA, setShowFullPDPA] = useState(false);
   const isEU = regionInfo.isEU;
+
+  // Apply any previously saved manual region override.
+  useEffect(() => {
+    AsyncStorage.getItem(REGION_OVERRIDE_KEY).then(override => {
+      if (override === 'SG') {
+        setRegionInfo(prev => ({ ...prev, regionCode: 'SG', isEU: false }));
+      }
+    }).catch(() => {});
+  }, []);
 
   const [checked, setChecked] = useState({
     understand: false,
@@ -121,6 +132,24 @@ export default function ConsentScreen({ onAccept }) {
     return () => clearTimeout(timer);
   }, [allChecked, scrolledToBottom]);
 
+  function handleRegionOverride() {
+    Alert.alert(
+      'Confirm your location',
+      'Are you based in Singapore or Southeast Asia?',
+      [
+        {
+          text: 'Yes, use Singapore version',
+          onPress: async () => {
+            setRegionInfo(prev => ({ ...prev, regionCode: 'SG', isEU: false }));
+            setChecked({ understand: false, parent: false, privacy: false, gdpr: false });
+            await AsyncStorage.setItem(REGION_OVERRIDE_KEY, 'SG').catch(() => {});
+          },
+        },
+        { text: 'No, I am in EU/UK', style: 'cancel' },
+      ]
+    );
+  }
+
   function handleScroll({ nativeEvent }) {
     const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
     if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 100) {
@@ -133,12 +162,13 @@ export default function ConsentScreen({ onAccept }) {
     setAccepting(true);
     try {
       await recordConsent(regionInfo);
+      onAccept(); // navigate on success
     } catch (e) {
-      // Storage failure must not block navigation — consent is best-effort.
-      console.warn('[ConsentScreen] recordConsent failed, proceeding anyway:', e);
+      console.error('[ConsentScreen] recordConsent failed:', e);
+      onAccept(); // still navigate — never block the user due to a storage error
+    } finally {
+      setAccepting(false); // safety net: reset spinner if component stays mounted
     }
-    // onAccept() is the only thing that drives navigation — App.js handles routing.
-    onAccept();
   }
 
   function handleDecline() {
@@ -168,13 +198,24 @@ export default function ConsentScreen({ onAccept }) {
               <Text style={styles.gdprBadgeText}>GDPR</Text>
             </View>
           )}
+          {isEU && (
+            <TouchableOpacity onPress={handleRegionOverride} style={{ marginLeft: 'auto' }}>
+              <Text style={styles.regionOverrideLink}>Not in EU/UK? Tap here</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <Text style={styles.title}>Before we begin</Text>
         <Text style={styles.subtitle}>
           {isEU
             ? `You're in ${regionInfo.regionCode} — GDPR applies. Please read how we handle your family's data.`
-            : 'Please read how Dadboard handles your family\'s data. Governed by Singapore\'s PDPA.'}
+            : 'Please read how Dadboard handles your family\'s data.'}
         </Text>
+        <GovernanceFootnote
+          regionCode={regionInfo.regionCode}
+          isEU={isEU}
+          showFull={showFullPDPA}
+          onToggleFull={() => setShowFullPDPA(p => !p)}
+        />
       </View>
 
       {/* Scrollable summary */}
@@ -238,10 +279,10 @@ export default function ConsentScreen({ onAccept }) {
 
         <TouchableOpacity
           style={styles.policyLink}
-          onPress={() => Linking.openURL('https://dadboard.app/privacy')}
+          onPress={() => Linking.openURL('https://razr37.github.io/dadboard/privacy/')}
         >
           <Ionicons name="open-outline" size={14} color={colors.info} />
-          <Text style={styles.policyLinkText}>Read full Privacy Policy at dadboard.app/privacy</Text>
+          <Text style={styles.policyLinkText}>Read full Privacy Policy at razr37.github.io/dadboard/privacy/</Text>
         </TouchableOpacity>
 
         {isEU && (
@@ -326,6 +367,41 @@ export default function ConsentScreen({ onAccept }) {
   );
 }
 
+function GovernanceFootnote({ regionCode, isEU, showFull, onToggleFull }) {
+  if (isEU) {
+    return (
+      <Text style={styles.governanceText}>
+        Governed by GDPR (EU General Data Protection Regulation)
+      </Text>
+    );
+  }
+  if (regionCode === 'SG') {
+    return (
+      <Text style={styles.governanceText}>
+        Governed by Singapore's Personal Data Protection Act 2012 (PDPA)
+      </Text>
+    );
+  }
+  // Other regions (MY, AU, ID, PH, TH, VN, HK, …)
+  return (
+    <View>
+      <Text style={styles.governanceText}>
+        Your privacy is protected. We collect only what's needed, never sell your data, and you can delete everything at any time.
+      </Text>
+      {showFull && (
+        <Text style={[styles.governanceText, { marginTop: 4 }]}>
+          This app complies with Singapore's Personal Data Protection Act 2012 (PDPA). Your rights include access, correction, erasure, and data portability. All requests are handled within 30 days.
+        </Text>
+      )}
+      <TouchableOpacity onPress={onToggleFull} style={{ marginTop: 4 }}>
+        <Text style={styles.learnMoreLink}>
+          {showFull ? 'Show less ↑' : 'Learn more about our privacy practices →'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function PolicySection({ icon, title, children }) {
   return (
     <View style={styles.policySection}>
@@ -376,7 +452,10 @@ const styles = StyleSheet.create({
   gdprBadge: { backgroundColor: '#DBEAFE', borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   gdprBadgeText: { fontSize: 10, fontWeight: '700', color: '#185FA5' },
   title: { ...typography.h2, color: colors.textPrimary, marginBottom: 4 },
-  subtitle: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 20 },
+  subtitle: { ...typography.bodySmall, color: colors.textSecondary, lineHeight: 20, marginBottom: 4 },
+  governanceText: { ...typography.caption, color: colors.textTertiary, lineHeight: 18, marginTop: 4 },
+  learnMoreLink: { ...typography.caption, color: colors.info, marginTop: 2 },
+  regionOverrideLink: { fontSize: 11, color: colors.info, textDecorationLine: 'underline' },
   scroll: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   policySection: {
     backgroundColor: colors.bgCard, borderRadius: radius.md,

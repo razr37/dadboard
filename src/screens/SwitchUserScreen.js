@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert 
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
-import { Avatar } from '../components/UI';
+import { Avatar, ClearableInput } from '../components/UI';
 
 const ROLE_OPTIONS = [
   { value: 'kid',    label: 'Kid',              desc: 'Simplified view · can submit requests' },
@@ -105,7 +105,7 @@ export default function SwitchUserScreen({ navigation }) {
         {adding ? (
           <View style={[styles.addForm, shadow.sm]}>
             <Text style={styles.addLabel}>Name</Text>
-            <TextInput
+            <ClearableInput
               style={styles.input}
               placeholder="e.g. Sophia, Mum…"
               placeholderTextColor={colors.textTertiary}

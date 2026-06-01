@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
+import { ClearableInput } from '../components/UI';
 import { revokeConsent } from './ConsentScreen';
 import {
   sendPasswordReset, deleteAllFamilyData, signOut,
@@ -144,8 +145,9 @@ export default function SettingsScreen({ navigation }) {
           {editingName ? (
             <View style={styles.editRow}>
               <Ionicons name="person-outline" size={18} color={colors.textTertiary} style={styles.rowIcon} />
-              <TextInput
+              <ClearableInput
                 style={styles.nameInput}
+                wrapperStyle={{ flex: 1 }}
                 value={draftName}
                 onChangeText={setDraftName}
                 autoFocus

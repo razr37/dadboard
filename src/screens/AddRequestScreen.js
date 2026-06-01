@@ -8,7 +8,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
-import { PrimaryButton, GhostButton, Avatar } from '../components/UI';
+import { PrimaryButton, GhostButton, Avatar, ClearableInput } from '../components/UI';
 
 const REQUEST_TYPES = [
   { key: 'pickup', label: 'Pickup / Drop-off', icon: 'car-outline' },
@@ -145,7 +145,7 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'pickup' && (
           <View style={styles.form}>
             <Field label="Activity / Class name" required>
-              <ClearableInput
+              <FormInput
                 value={activity}
                 onChangeText={setActivity}
                 placeholder="e.g. Maths tuition, Swimming..."
@@ -202,7 +202,7 @@ export default function AddRequestScreen({ navigation, route }) {
             )}
 
             <Field label="Pickup location" required>
-              <ClearableInput
+              <FormInput
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Address or place name"
@@ -218,7 +218,7 @@ export default function AddRequestScreen({ navigation, route }) {
             </Field>
 
             <Field label="Drop me to">
-              <ClearableInput
+              <FormInput
                 value={dropTo}
                 onChangeText={setDropTo}
                 placeholder="Home"
@@ -234,7 +234,7 @@ export default function AddRequestScreen({ navigation, route }) {
             </Field>
 
             <Field label="Note for Dad">
-              <ClearableInput
+              <FormInput
                 value={note}
                 onChangeText={setNote}
                 placeholder="Any extra info..."
@@ -249,7 +249,7 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'buy' && (
           <View style={styles.form}>
             <Field label="What do you need?" required>
-              <ClearableInput
+              <FormInput
                 value={item}
                 onChangeText={setItem}
                 placeholder="e.g. Milo tins, new shoes (size 6)..."
@@ -271,7 +271,7 @@ export default function AddRequestScreen({ navigation, route }) {
             </Field>
 
             <Field label="Extra details">
-              <ClearableInput
+              <FormInput
                 value={note}
                 onChangeText={setNote}
                 placeholder="Brand, size, colour..."
@@ -286,7 +286,7 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'other' && (
           <View style={styles.form}>
             <Field label="Your request" required>
-              <ClearableInput
+              <FormInput
                 value={message}
                 onChangeText={setMessage}
                 placeholder="What do you need from Dad?"
@@ -333,50 +333,15 @@ function Field({ label, children, required, style }) {
   );
 }
 
-// TextInput with an inline × clear button and optional bookmark-save icon.
-function ClearableInput({ value, onChangeText, onSave, isSaved, multiline, numberOfLines, placeholder, ...rest }) {
-  const showClear  = value.length > 0;
-  const showSave   = !!onSave && value.trim().length > 0 && !isSaved;
-  const extraRight = (showClear ? 1 : 0) * 28 + (showSave ? 1 : 0) * 28;
-
+// Thin wrapper that applies screen-specific input defaults to the shared ClearableInput.
+function FormInput({ multiline, ...props }) {
   return (
-    <View style={styles.clearableWrapper}>
-      <TextInput
-        style={[
-          styles.input,
-          multiline && styles.textarea,
-          { paddingRight: spacing.md + extraRight },
-        ]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        multiline={multiline}
-        numberOfLines={numberOfLines}
-        textAlignVertical={multiline ? 'top' : undefined}
-        {...rest}
-      />
-      <View style={[styles.clearableActions, multiline && { top: spacing.sm, bottom: undefined }]}>
-        {showSave && (
-          <TouchableOpacity
-            onPress={onSave}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-            style={styles.clearableBtn}
-          >
-            <Ionicons name="bookmark-outline" size={15} color={colors.primary} />
-          </TouchableOpacity>
-        )}
-        {showClear && (
-          <TouchableOpacity
-            onPress={() => onChangeText('')}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-            style={styles.clearableBtn}
-          >
-            <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
+    <ClearableInput
+      style={multiline ? [styles.input, styles.textarea] : styles.input}
+      placeholderTextColor={colors.textTertiary}
+      multiline={multiline}
+      {...props}
+    />
   );
 }
 
@@ -444,17 +409,6 @@ const styles = StyleSheet.create({
     fontSize: 15, color: colors.textPrimary,
   },
   textarea: { height: 80, textAlignVertical: 'top' },
-  clearableWrapper: { position: 'relative' },
-  clearableActions: {
-    position: 'absolute',
-    right: spacing.sm,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  clearableBtn: { padding: 2 },
   chipScroll: { marginTop: spacing.sm },
   chipRow: { gap: spacing.sm, paddingBottom: 2 },
   chip: {

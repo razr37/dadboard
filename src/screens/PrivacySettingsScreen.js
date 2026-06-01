@@ -210,7 +210,7 @@ export default function PrivacySettingsScreen({ navigation }) {
           <DataRow label="Region" value={consentMeta?.region || 'Unknown'} />
           <DataRow label="Policy version" value={`v${consentMeta?.policyVersion || '2.0'}`} />
           <DataRow label="Governing law" value={isEU ? 'GDPR + PDPA' : 'PDPA (Singapore)'} />
-          <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://dadboard.app/privacy')}>
+          <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://razr37.github.io/dadboard/privacy/')}>
             <Ionicons name="open-outline" size={13} color={colors.info} />
             <Text style={styles.linkText}>Full Privacy Policy</Text>
           </TouchableOpacity>

@@ -18,6 +18,7 @@ import {
   createEmailAccount, joinFamily, createFamily, sendPasswordReset,
 } from '../utils/firebase';
 import { colors, spacing, radius, typography } from '../utils/theme';
+import { ClearableInput } from '../components/UI';
 
 const TABS = ['parent', 'join', 'guest'];
 
@@ -162,7 +163,7 @@ export default function AuthScreen({ initialInviteCode }) {
             <Text style={styles.formSub}>Create your account. Your kids join using your invite code.</Text>
 
             <Field label="Your name">
-              <TextInput
+              <ClearableInput
                 style={styles.input}
                 placeholder="e.g. Dad, Marcus..."
                 placeholderTextColor={colors.textTertiary}
@@ -174,7 +175,7 @@ export default function AuthScreen({ initialInviteCode }) {
               />
             </Field>
             <Field label="Email address">
-              <TextInput
+              <ClearableInput
                 style={styles.input}
                 placeholder="you@email.com"
                 placeholderTextColor={colors.textTertiary}
@@ -221,7 +222,7 @@ export default function AuthScreen({ initialInviteCode }) {
             <Text style={styles.formSub}>Sign in to your Dadboard account.</Text>
 
             <Field label="Email address">
-              <TextInput
+              <ClearableInput
                 style={styles.input}
                 placeholder="you@email.com"
                 placeholderTextColor={colors.textTertiary}
@@ -276,7 +277,7 @@ export default function AuthScreen({ initialInviteCode }) {
               <>
                 <Text style={styles.formSub}>Ask Dad for the invite link or code (Settings → Invite).</Text>
                 <Field label="Invite code from Dad">
-                  <TextInput
+                  <ClearableInput
                     style={[styles.input, styles.codeInput]}
                     placeholder="Paste code here"
                     placeholderTextColor={colors.textTertiary}
@@ -290,7 +291,7 @@ export default function AuthScreen({ initialInviteCode }) {
             )}
 
             <Field label="Your name">
-              <TextInput
+              <ClearableInput
                 style={styles.input}
                 placeholder="e.g. Ethan, Mum..."
                 placeholderTextColor={colors.textTertiary}
@@ -302,7 +303,7 @@ export default function AuthScreen({ initialInviteCode }) {
               />
             </Field>
             <Field label="Your email">
-              <TextInput
+              <ClearableInput
                 style={styles.input}
                 placeholder="you@email.com"
                 placeholderTextColor={colors.textTertiary}
@@ -360,7 +361,7 @@ export default function AuthScreen({ initialInviteCode }) {
         )}
 
         <Text style={styles.legalText}>
-          By continuing you agree to our Privacy Policy (dadboard.app/privacy). Governed by Singapore PDPA + GDPR.
+          By continuing you agree to our Privacy Policy (razr37.github.io/dadboard/privacy/). Governed by Singapore PDPA + GDPR.
         </Text>
 
       </ScrollView>
