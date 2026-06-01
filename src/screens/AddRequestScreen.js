@@ -38,6 +38,7 @@ export default function AddRequestScreen({ navigation, route }) {
   const [location, setLocation] = useState('');
   const [dropTo, setDropTo] = useState('Home');
   const [note, setNote] = useState('');
+  const [showMore, setShowMore] = useState(false);
 
   // Derived strings used in the request payload and display
   const dateStr = (() => {
@@ -59,8 +60,8 @@ export default function AddRequestScreen({ navigation, route }) {
 
   function handleSubmit() {
     if (type === 'pickup') {
-      if (!activity.trim() || !location.trim()) {
-        Alert.alert('Missing info', 'Please fill in the activity and pickup location.');
+      if (!location.trim()) {
+        Alert.alert('Missing info', 'Please choose a pickup location.');
         return;
       }
       addRequest({
@@ -68,7 +69,7 @@ export default function AddRequestScreen({ navigation, route }) {
         fromId: currentUser.id,
         fromName: currentUser.name,
         colorIndex: currentUser.colorIndex,
-        activity: activity.trim(),
+        activity: activity.trim() || 'Pickup',
         date: dateStr,
         time: timeStr,
         location: location.trim(),
@@ -144,37 +145,28 @@ export default function AddRequestScreen({ navigation, route }) {
         {/* Pickup form */}
         {type === 'pickup' && (
           <View style={styles.form}>
-            <Field label="Activity / Class name" required>
-              <FormInput
-                value={activity}
-                onChangeText={setActivity}
-                placeholder="e.g. Maths tuition, Swimming..."
-              />
-            </Field>
-
-            <View style={styles.row}>
-              <Field label="Date" style={{ flex: 1 }}>
+            {/* ── Required: When ── */}
+            <Field label="When">
+              <View style={styles.row}>
                 <TouchableOpacity
-                  style={[styles.input, styles.pickerBtn]}
+                  style={[styles.input, styles.pickerBtn, { flex: 1 }]}
                   onPress={() => setShowDatePicker(true)}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="calendar-outline" size={15} color={colors.textTertiary} />
                   <Text style={styles.pickerText}>{displayDate}</Text>
                 </TouchableOpacity>
-              </Field>
-              <View style={{ width: spacing.md }} />
-              <Field label="Time" style={{ flex: 1 }}>
+                <View style={{ width: spacing.sm }} />
                 <TouchableOpacity
-                  style={[styles.input, styles.pickerBtn]}
+                  style={[styles.input, styles.pickerBtn, { width: 100 }]}
                   onPress={() => setShowTimePicker(true)}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="time-outline" size={15} color={colors.textTertiary} />
                   <Text style={styles.pickerText}>{displayTime}</Text>
                 </TouchableOpacity>
-              </Field>
-            </View>
+              </View>
+            </Field>
 
             {showDatePicker && (
               <DateTimePicker
@@ -201,7 +193,8 @@ export default function AddRequestScreen({ navigation, route }) {
               />
             )}
 
-            <Field label="Pickup location" required>
+            {/* ── Required: Where ── */}
+            <Field label="Where">
               <FormInput
                 value={location}
                 onChangeText={setLocation}
@@ -217,31 +210,57 @@ export default function AddRequestScreen({ navigation, route }) {
               />
             </Field>
 
-            <Field label="Drop me to">
-              <FormInput
-                value={dropTo}
-                onChangeText={setDropTo}
-                placeholder="Home"
-                onSave={() => addFavouritePlace(dropTo)}
-                isSaved={favouritePlaces.includes(dropTo.trim())}
+            {/* ── Optional details ── */}
+            <TouchableOpacity
+              style={styles.moreBtn}
+              onPress={() => setShowMore(p => !p)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={showMore ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.info}
               />
-              <FavChips
-                places={favouritePlaces}
-                onSelect={setDropTo}
-                currentValue={dropTo}
-                onRemove={removeFavouritePlace}
-              />
-            </Field>
+              <Text style={styles.moreBtnText}>
+                {showMore ? 'Less details' : 'More details +'}
+              </Text>
+            </TouchableOpacity>
 
-            <Field label="Note for Dad">
-              <FormInput
-                value={note}
-                onChangeText={setNote}
-                placeholder="Any extra info..."
-                multiline
-                numberOfLines={3}
-              />
-            </Field>
+            {showMore && (
+              <>
+                <Field label="Activity / Class name">
+                  <FormInput
+                    value={activity}
+                    onChangeText={setActivity}
+                    placeholder="e.g. Maths tuition, Swimming… (defaults to Pickup)"
+                  />
+                </Field>
+                <Field label="Drop me to">
+                  <FormInput
+                    value={dropTo}
+                    onChangeText={setDropTo}
+                    placeholder="Home"
+                    onSave={() => addFavouritePlace(dropTo)}
+                    isSaved={favouritePlaces.includes(dropTo.trim())}
+                  />
+                  <FavChips
+                    places={favouritePlaces}
+                    onSelect={setDropTo}
+                    currentValue={dropTo}
+                    onRemove={removeFavouritePlace}
+                  />
+                </Field>
+                <Field label="Note for Dad">
+                  <FormInput
+                    value={note}
+                    onChangeText={setNote}
+                    placeholder="Any extra info..."
+                    multiline
+                    numberOfLines={3}
+                  />
+                </Field>
+              </>
+            )}
           </View>
         )}
 
@@ -268,16 +287,6 @@ export default function AddRequestScreen({ navigation, route }) {
                   </TouchableOpacity>
                 ))}
               </View>
-            </Field>
-
-            <Field label="Extra details">
-              <FormInput
-                value={note}
-                onChangeText={setNote}
-                placeholder="Brand, size, colour..."
-                multiline
-                numberOfLines={3}
-              />
             </Field>
           </View>
         )}
@@ -435,4 +444,9 @@ const styles = StyleSheet.create({
   urgencyText: { fontSize: 13, color: colors.textSecondary },
   urgencyTextActive: { color: colors.primaryDark, fontWeight: '600' },
   submitRow: { marginTop: spacing.xl },
+  moreBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginBottom: spacing.lg,
+  },
+  moreBtnText: { ...typography.bodySmall, color: colors.info, fontWeight: '600' },
 });
