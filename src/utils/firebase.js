@@ -279,43 +279,50 @@ export async function setMemberMeals(familyId, memberId, weekStart, weekData) {
 }
 
 // ─── Account deletion (GDPR Art.17 / PDPA) ───────────────────────────────────
-// Deletes every record associated with this family. Must be kept in sync with
-// the full data model — add new collections/subcollections here if introduced.
+// Deletion order matters:
+//   1. Subcollections first (client SDK does NOT cascade-delete them)
+//   2. Parent docs after subcollections are clear
+//   3. Auth account LAST — deleting it revokes the session token needed
+//      for the preceding Firestore writes
+//   4. AsyncStorage after Auth so an auth/requires-recent-login error on
+//      deleteUser() leaves local data intact (user must re-auth and retry)
+//
+// NOTE: telegram_users is written by the Admin SDK bot and is NOT readable
+// by the web client (security rules deny it). Telegram user cleanup must
+// be handled server-side (e.g. a Cloud Function or the bot itself).
+// Keep this function in sync with the full data model.
 
 export async function deleteAllFamilyData(familyId) {
-  // --- families/{familyId}/requests ---
-  const requestsSnap = await getDocs(collection(db, 'families', familyId, 'requests'));
-  const batch1 = writeBatch(db);
-  requestsSnap.docs.forEach(d => batch1.delete(d.ref));
-  await batch1.commit();
-
-  // --- families/{familyId}/members ---
-  const membersSnap = await getDocs(collection(db, 'families', familyId, 'members'));
-  const batch2 = writeBatch(db);
-  membersSnap.docs.forEach(d => batch2.delete(d.ref));
-  await batch2.commit();
-
-  // --- families/{familyId}/mealPlans ---
-  const mealPlansSnap = await getDocs(collection(db, 'families', familyId, 'mealPlans'));
-  const batch3 = writeBatch(db);
-  mealPlansSnap.docs.forEach(d => batch3.delete(d.ref));
-  await batch3.commit();
-
-  // --- families/{familyId} ---
-  await deleteDoc(doc(db, 'families', familyId));
-
-  // --- telegram_users where familyId matches (written by bot, top-level collection) ---
-  const telegramSnap = await getDocs(
-    query(collection(db, 'telegram_users'), where('familyId', '==', familyId))
-  );
-  const batch4 = writeBatch(db);
-  telegramSnap.docs.forEach(d => batch4.delete(d.ref));
-  await batch4.commit();
-
-  // --- users/{uid} + Firebase Auth account ---
   const user = auth.currentUser;
-  if (user) {
+  if (!user) return;
+
+  try {
+    // 1. families/{familyId}/requests
+    const requestsSnap = await getDocs(collection(db, 'families', familyId, 'requests'));
+    await Promise.all(requestsSnap.docs.map(d => deleteDoc(d.ref)));
+
+    // 2. families/{familyId}/members
+    const membersSnap = await getDocs(collection(db, 'families', familyId, 'members'));
+    await Promise.all(membersSnap.docs.map(d => deleteDoc(d.ref)));
+
+    // 3. families/{familyId}/mealPlans
+    const mealPlansSnap = await getDocs(collection(db, 'families', familyId, 'mealPlans'));
+    await Promise.all(mealPlansSnap.docs.map(d => deleteDoc(d.ref)));
+
+    // 4. families/{familyId} parent doc
+    await deleteDoc(doc(db, 'families', familyId));
+
+    // 5. users/{uid} mapping doc
     await deleteDoc(doc(db, 'users', user.uid));
+
+    // 6. Firebase Auth account — do this last; it revokes the session token
     await deleteUser(user);
+
+    // 7. Local storage — only after Auth deletion succeeds
+    await ReactNativeAsyncStorage.clear();
+
+  } catch (e) {
+    console.error('[deleteAllFamilyData] failed:', e.code, e.message);
+    throw e;
   }
 }
