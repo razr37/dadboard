@@ -62,11 +62,22 @@ All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Au
 
 ### Boot sequence (App.js)
 
-`Root` component (outside `AppProvider`) checks auth state first. If unauthenticated, it renders `AuthScreen` standalone. Once authenticated, it wraps everything in `AppProvider` and checks consent (`ConsentScreen`). Only after both gates pass does the main navigator mount.
+`Root` uses three boolean states: `ready`, `authed`, `consented`. Renders sequentially:
 
-This means `AppProvider`'s context is not available in `AuthScreen` or `ConsentScreen`.
+```
+!ready     → loading spinner
+!authed    → AuthScreen (in NavigationContainer, standalone)
+!consented → ConsentScreen (plain component, no navigator)
+else       → AppProvider + NavigationContainer + AppNavigator
+```
 
-**Splash screen**: `SplashScreen.hideAsync()` is called at module scope (before any component mounts) so the native splash dismisses as soon as the JS bundle loads. `app.json` sets `splash.backgroundColor` to `#F07C2A` (brand orange) with no image — any unavoidable flash shows brand colour rather than a pattern. Do not add `SplashScreen.preventAutoHideAsync()` or the splash will hang.
+`onAuthStateChanged` sets `authed` and reads `AsyncStorage.getItem('dadboard_consented') === 'yes'` to set `consented`. `ConsentScreen.onAccept` writes `'dadboard_consented'='yes'` to AsyncStorage and calls `setConsented(true)` — navigation is immediate, write is fire-and-forget.
+
+`AppProvider`'s context is not available in `AuthScreen` or `ConsentScreen` (both render outside the provider).
+
+**Consent key**: `dadboard_consented` = `'yes'`. `revokeConsent()` in ConsentScreen clears this key (plus legacy keys). `AsyncStorage.clear()` in `performDelete` also clears it.
+
+**Splash screen**: `SplashScreen.hideAsync()` is called at module scope so the native splash dismisses as soon as the JS bundle loads. `app.json` sets `splash.backgroundColor` to `#F07C2A`. Do not add `SplashScreen.preventAutoHideAsync()` or the splash will hang.
 
 ### Navigation
 
@@ -92,9 +103,7 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
 - `Localization.region` is the primary source. The locale-string fallback (e.g. `"en-SG"` → `"SG"`) is skipped for globally-distributed language codes (`en`, `fr`, `es`, `pt`, `nl`, `de`) because tags like `en-GB` are standard on non-EU devices in SG, MY, HK, AU.
 - If `Localization.region` is null (no SIM, emulator, some Android builds), `isEU` is `false` and `regionCode` defaults to `'SG'`.
 
-**`handleAccept`**: bare minimum — `try { await recordConsent(regionInfo); } catch {}` then `onAccept()` unconditionally. No loading state, no conditions. `ConsentScreen` contains **no navigation logic**; App.js owns all routing via the `onAccept` prop.
-
-**Race condition guard** (`justConsented` ref in App.js): `onAuthStateChanged` can fire mid-consent (token refresh) and call `hasConsented()` before the AsyncStorage write completes, getting `false` and overwriting `consentGiven=true`. The `justConsented = useRef(false)` ref is set to `true` in `onConsentAccepted` before `setConsentGiven(true)`. The auth listener skips `hasConsented()` when the ref is true.
+**`handleAccept`**: `await onAccept()` — nothing else. The `onAccept` prop (set in App.js Root) writes `dadboard_consented='yes'` and calls `setConsented(true)`. Navigation is driven entirely by App.js state, not by ConsentScreen.
 
 **Scroll fallback timer**: 2 seconds — unlocks the button if all checkboxes are ticked but the content never scrolled to the `-100px` threshold (common on tall screens).
 
