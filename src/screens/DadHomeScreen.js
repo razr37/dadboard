@@ -12,6 +12,10 @@ import { Avatar, StatusBadge, SectionHeader, EmptyState, formatTime } from '../c
 
 const SETUP_KEY = 'dadboard_setup_complete';
 
+function toLocalDateStr(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export default function DadHomeScreen({ navigation }) {
   const { getTodayRequests, getPendingBuyRequests, updateRequestStatus, deleteRequest, family, requests } = useApp();
   const [refreshing, setRefreshing] = useState(false);
@@ -42,6 +46,15 @@ export default function DadHomeScreen({ navigation }) {
   const pickups = getTodayRequests();
   const buyItems = getPendingBuyRequests();
   const pendingCount = pickups.filter(p => p.status === 'pending').length;
+
+  // Summary strip counts
+  const todayStr = toLocalDateStr(new Date());
+  const tomorrowStr = toLocalDateStr(new Date(Date.now() + 86400000));
+  const next48hCount = requests.filter(
+    r => r.type === 'pickup' &&
+         (r.date === todayStr || r.date === tomorrowStr) &&
+         r.status !== 'done'
+  ).length;
 
   function onRefresh() {
     setRefreshing(true);
@@ -108,9 +121,12 @@ export default function DadHomeScreen({ navigation }) {
             onPress={() => navigation.navigate('Schedule')}
             activeOpacity={0.65}
           >
-            <Text style={styles.summaryNum}>{pickups.filter(p => p.status !== 'done').length}</Text>
-            <Text style={styles.summaryLabel}>Pickups left</Text>
-            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
+            <Text style={styles.summaryNum}>{next48hCount}</Text>
+            <View style={styles.summaryLabelRow}>
+              <Text style={styles.summaryLabel}>Pickups</Text>
+              <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} />
+            </View>
+            <Text style={styles.summarySub}>next 48 hrs</Text>
           </TouchableOpacity>
           <View style={styles.summaryDivider} />
           <TouchableOpacity
@@ -119,8 +135,11 @@ export default function DadHomeScreen({ navigation }) {
             activeOpacity={0.65}
           >
             <Text style={styles.summaryNum}>{buyItems.length}</Text>
-            <Text style={styles.summaryLabel}>Buy requests</Text>
-            <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} style={{ marginTop: 3 }} />
+            <View style={styles.summaryLabelRow}>
+              <Text style={styles.summaryLabel}>Shopping</Text>
+              <Ionicons name="chevron-forward" size={11} color={colors.textTertiary} />
+            </View>
+            <Text style={styles.summarySub}>items pending</Text>
           </TouchableOpacity>
         </View>
 
@@ -366,7 +385,9 @@ const styles = StyleSheet.create({
   },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryNum: { fontSize: 24, fontWeight: '700', color: colors.textPrimary },
-  summaryLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
+  summaryLabel: { ...typography.caption, color: colors.textSecondary },
+  summarySub: { fontSize: 10, color: colors.textTertiary, marginTop: 1 },
   summaryDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
   pickupCard: {
     flexDirection: 'row',
