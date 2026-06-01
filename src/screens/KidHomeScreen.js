@@ -1,5 +1,5 @@
 // src/screens/KidHomeScreen.js
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { startOfWeek, addDays } from 'date-fns';
