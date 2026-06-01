@@ -51,8 +51,35 @@ function withBlankSplashLogo(config) {
   ]);
 }
 
+// Copies assets/icon.png into every drawable-* density bucket as
+// notification_icon.png. These directories are gitignored and wiped by
+// prebuild --clean, so the icon must be regenerated here on every run.
+function withNotificationIcon(config) {
+  return withDangerousMod(config, [
+    'android',
+    (mod) => {
+      const iconSrc = path.join(mod.modRequest.projectRoot, 'assets', 'icon.png');
+      const resDir = path.join(mod.modRequest.platformProjectRoot, 'app/src/main/res');
+      const densities = [
+        'drawable-mdpi',
+        'drawable-hdpi',
+        'drawable-xhdpi',
+        'drawable-xxhdpi',
+        'drawable-xxxhdpi',
+      ];
+      for (const density of densities) {
+        const dir = path.join(resDir, density);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.copyFileSync(iconSrc, path.join(dir, 'notification_icon.png'));
+      }
+      return mod;
+    },
+  ]);
+}
+
 module.exports = (config) => {
   config = withOrangeColors(config);
   config = withBlankSplashLogo(config);
+  config = withNotificationIcon(config);
   return config;
 };
