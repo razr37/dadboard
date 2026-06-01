@@ -287,6 +287,13 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - ConsentScreen: "I agree" button tapped but did nothing — `handleAccept` had no try/catch; AsyncStorage throw in `recordConsent` silently blocked `onAccept()`
 - ConsentScreen: button stayed greyed out after ticking all checkboxes — scroll threshold tightened to `-100px` and 10s fallback timer added
 
+## Session management
+- Each Claude.ai chat session has a context limit
+- When you see "conversation compacted" notice - open a new Claude.ai chat immediately
+- Start new chat with: "I'm building Dadboard. Read ~/Dadboard-work/CLAUDE.md for full context. Current task: [describe task]"
+- CLAUDE.md is the persistent memory - keep it updated at end of every session
+- Claude Code sessions (terminal) are separate from Claude.ai chat sessions and don't have the same limit
+
 ## If starting fresh on a new machine
 ```bash
 npx create-expo-app Dadboard --template blank
