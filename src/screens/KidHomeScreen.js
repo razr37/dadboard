@@ -31,22 +31,25 @@ export default function KidHomeScreen({ navigation }) {
   const { currentUser, requests } = useApp();
 
   const myRequests = requests
-    .filter(r => r.fromId === currentUser.id)
+    .filter(r => r.fromId === currentUser?.id)
     .sort((a, b) => b.createdAt - a.createdAt);
 
   const pending = myRequests.filter(r => r.status !== 'done');
   const done = myRequests.filter(r => r.status === 'done');
-  const kidColor = colors.kids[currentUser.colorIndex % 5] || colors.primary;
-  const kidColorLight = colors.kidsLight[currentUser.colorIndex % 5] || colors.primaryLight;
+  // colorIndex can be undefined (new kid) or -1 (parent default) — both are unsafe
+  // for array indexing. ?? 0 catches undefined/null; Math.max ensures no negatives.
+  const safeIndex = Math.max(0, currentUser?.colorIndex ?? 0) % 5;
+  const kidColor      = colors.kids[safeIndex]      || colors.primary;
+  const kidColorLight = colors.kidsLight[safeIndex] || colors.primaryLight;
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: kidColorLight }]}>
         <View style={styles.headerTop}>
-          <Avatar name={currentUser.name} colorIndex={currentUser.colorIndex} size={44} />
+          <Avatar name={currentUser?.name ?? ''} colorIndex={safeIndex} size={44} />
           <View style={{ flex: 1, marginLeft: spacing.md }}>
-            <Text style={styles.greeting}>Hi {currentUser.name}!</Text>
+            <Text style={styles.greeting}>Hi {currentUser?.name ?? 'there'}!</Text>
             <Text style={styles.greetingSub}>Send a request to Dad</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('SwitchUser')} style={styles.switchBtn}>
@@ -89,7 +92,7 @@ export default function KidHomeScreen({ navigation }) {
 
         {/* Meals this week */}
         <Text style={styles.sectionLabel}>MEALS THIS WEEK</Text>
-        <MealsThisWeek memberId={currentUser.id} kidColor={kidColor} />
+        <MealsThisWeek memberId={currentUser?.id} kidColor={kidColor} />
 
         {myRequests.length === 0 ? (
           <EmptyState icon="✉️" title="No requests yet" subtitle="Tap 'New request' to ask Dad for a pickup or anything else." />

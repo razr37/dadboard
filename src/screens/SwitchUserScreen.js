@@ -31,8 +31,12 @@ export default function SwitchUserScreen({ navigation }) {
     // goBack() must fire before switchUser() changes currentUser.role.
     // A role change (parent ↔ kid) causes AppNavigator to swap the entire stack,
     // detaching this modal's navigation context before goBack() could run.
-    if (navigation.canGoBack()) navigation.goBack();
-    switchUser(member);
+    try {
+      if (navigation.canGoBack()) navigation.goBack();
+      switchUser(member);
+    } catch (e) {
+      Alert.alert('Switch error', e.message);
+    }
   }
 
   async function handleAddMember() {
