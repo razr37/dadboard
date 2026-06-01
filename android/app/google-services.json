@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "382739338353",
+    "project_id": "dadboard-app",
+    "storage_bucket": "dadboard-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382739338353:android:ac6c17525e6dcf29f977d0",
+        "android_client_info": {
+          "package_name": "com.dadboard.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVXgm0Eu1s3E3ZshjoukpXM3rGCC4hqM0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
