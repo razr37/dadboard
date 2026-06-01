@@ -7,9 +7,10 @@
 //   4. If no consent → show ConsentScreen
 //   5. If consented → show main app (Dad view or Kid view based on role)
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 
 // Dismiss the native splash immediately when the JS bundle loads.
@@ -24,7 +25,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { colors } from './src/utils/theme';
 import { onAuthStateChanged } from './src/utils/firebase';
-import { hasConsented } from './src/screens/ConsentScreen';
 
 import AuthScreen from './src/screens/AuthScreen';
 import ConsentScreen from './src/screens/ConsentScreen';
@@ -83,18 +83,8 @@ function KidMain() {
   );
 }
 
-function AppNavigator({ consentGiven, onConsentAccepted, initialInviteCode }) {
+function AppNavigator({ initialInviteCode }) {
   const { currentUser, loaded } = useApp();
-
-  if (!consentGiven) {
-    return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Consent">
-          {() => <ConsentScreen onAccept={onConsentAccepted} />}
-        </Stack.Screen>
-      </Stack.Navigator>
-    );
-  }
 
   if (!loaded) {
     return (
@@ -124,9 +114,6 @@ function AppNavigator({ consentGiven, onConsentAccepted, initialInviteCode }) {
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
       <Stack.Screen name="Shopping" component={ShoppingScreen} />
-      <Stack.Screen name="Consent">
-        {() => <ConsentScreen onAccept={onConsentAccepted} />}
-      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -141,15 +128,10 @@ function parseInviteCode(url) {
 }
 
 function Root() {
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [consentGiven, setConsentGiven] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [consented, setConsented] = useState(false);
   const [initialInviteCode, setInitialInviteCode] = useState(null);
-  // Prevents onAuthStateChanged from overwriting consentGiven=true after the user
-  // just tapped "I agree". Without this, a concurrent token refresh fires the listener
-  // which calls hasConsented() before the AsyncStorage write completes, gets false,
-  // and overwrites the true we just set — leaving the app stuck on ConsentScreen.
-  const justConsented = useRef(false);
 
   // Deep link handling — captures invite code from https://dadboard.app/join?code=...
   useEffect(() => {
@@ -166,21 +148,17 @@ function Root() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(async (user) => {
-      setIsAuthed(!!user);
+      setAuthed(!!user);
       if (user) {
-        // Skip hasConsented() if the user just tapped "I agree" in this session —
-        // the AsyncStorage write may not have completed yet and would return false.
-        if (!justConsented.current) {
-          const consented = await hasConsented();
-          setConsentGiven(consented);
-        }
+        const c = await AsyncStorage.getItem('dadboard_consented');
+        setConsented(c === 'yes');
       }
-      setAuthChecked(true);
+      setReady(true);
     });
     return unsub;
   }, []);
 
-  if (!authChecked || consentGiven === null && isAuthed) {
+  if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -188,8 +166,7 @@ function Root() {
     );
   }
 
-  // Not authenticated → show auth screen outside of AppProvider
-  if (!isAuthed) {
+  if (!authed) {
     return (
       <NavigationContainer>
         <StatusBar style="dark" />
@@ -202,15 +179,23 @@ function Root() {
     );
   }
 
+  if (!consented) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <ConsentScreen onAccept={() => {
+          AsyncStorage.setItem('dadboard_consented', 'yes');
+          setConsented(true);
+        }} />
+      </>
+    );
+  }
+
   return (
     <AppProvider>
       <NavigationContainer>
         <StatusBar style="dark" />
-        <AppNavigator
-          consentGiven={consentGiven}
-          onConsentAccepted={() => { justConsented.current = true; setConsentGiven(true); }}
-          initialInviteCode={initialInviteCode}
-        />
+        <AppNavigator initialInviteCode={initialInviteCode} />
       </NavigationContainer>
     </AppProvider>
   );

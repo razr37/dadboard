@@ -88,7 +88,7 @@ export async function recordConsent(regionInfo) {
 }
 
 export async function revokeConsent() {
-  await AsyncStorage.multiRemove([CONSENT_KEY, 'dadboard_consent_meta', REGION_OVERRIDE_KEY]);
+  await AsyncStorage.multiRemove([CONSENT_KEY, 'dadboard_consent_meta', REGION_OVERRIDE_KEY, 'dadboard_consented']);
 }
 
 export default function ConsentScreen({ onAccept }) {
@@ -158,10 +158,7 @@ export default function ConsentScreen({ onAccept }) {
   }
 
   async function handleAccept() {
-    try { await recordConsent(regionInfo); } catch (e) {
-      console.error('[ConsentScreen] recordConsent failed:', e);
-    }
-    onAccept();
+    await onAccept();
   }
 
   function handleDecline() {
