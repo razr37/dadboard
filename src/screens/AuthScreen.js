@@ -49,26 +49,40 @@ export default function AuthScreen({ initialInviteCode }) {
     if (createPassword.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
     setLoading(true);
     try {
-      await createEmailAccount(email.trim(), createPassword);
-      await createFamily(parentName.trim());
-    } catch (e) {
-      if (e.code === 'auth/email-already-in-use') {
-        Alert.alert(
-          'Email already registered',
-          'This email already has an account. Would you like to sign in instead?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Sign in',
-              onPress: () => {
-                setSignInPassword(''); // never carry over the create-account password
-                setSignInMode(true);
+      // Step 1: create Firebase Auth account
+      try {
+        await createEmailAccount(email.trim(), createPassword);
+      } catch (e) {
+        if (e.code === 'auth/email-already-in-use') {
+          Alert.alert(
+            'Email already registered',
+            'This email already has an account. Would you like to sign in instead?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Sign in',
+                onPress: () => {
+                  setSignInPassword(''); // never carry over the create-account password
+                  setSignInMode(true);
+                },
               },
-            },
-          ]
+            ]
+          );
+        } else {
+          Alert.alert('Sign up failed', friendlyError(e.code));
+        }
+        return; // auth failed — don't attempt family creation
+      }
+
+      // Step 2: write family + member + user docs to Firestore
+      try {
+        await createFamily(parentName.trim());
+      } catch (e) {
+        console.error('[AuthScreen] createFamily failed:', e.code, e.message);
+        Alert.alert(
+          'Family setup failed',
+          `Could not create family: ${e.message || e.code || String(e)}\n\nYour account was created. Please sign in again to retry.`
         );
-      } else {
-        Alert.alert('Sign up failed', friendlyError(e.code));
       }
     } finally {
       setLoading(false);

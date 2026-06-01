@@ -92,11 +92,16 @@ export async function upgradeAnonymousToEmail(email, password) {
 // ─── Family management ────────────────────────────────────────────────────────
 
 export async function createFamily(parentName) {
+  console.log('[createFamily] called, parentName:', parentName);
   const user = auth.currentUser;
+  console.log('[createFamily] currentUser:', user
+    ? `uid=${user.uid} provider=${user.providerData[0]?.providerId ?? 'anon'} isAnon=${user.isAnonymous}`
+    : 'null');
   if (!user) throw new Error('Not authenticated');
 
   const familyRef = doc(collection(db, 'families'));
   const familyId = familyRef.id;
+  console.log('[createFamily] familyId:', familyId);
   const batch = writeBatch(db);
 
   batch.set(familyRef, {
@@ -121,7 +126,9 @@ export async function createFamily(parentName) {
     updatedAt: serverTimestamp(),
   });
 
+  console.log('[createFamily] committing batch…');
   await batch.commit();
+  console.log('[createFamily] batch committed OK, familyId:', familyId);
   return familyId;
 }
 
@@ -130,6 +137,21 @@ export async function getFamilyId() {
   if (!user) return null;
   const snap = await getDoc(doc(db, 'users', user.uid));
   return snap.exists() ? snap.data().familyId : null;
+}
+
+// Real-time listener for /users/{uid}.familyId.
+// Fires immediately with current value, then again on any change.
+// Handles the race where createFamily() commits after onAuthStateChanged fires.
+// On permission-denied (anonymous user) calls callback(null) without throwing.
+export function subscribeToFamilyId(uid, callback) {
+  return onSnapshot(
+    doc(db, 'users', uid),
+    (snap) => callback(snap.exists() ? (snap.data().familyId || null) : null),
+    (err) => {
+      console.warn('[subscribeToFamilyId] error:', err.code);
+      callback(null);
+    }
+  );
 }
 
 export async function joinFamily(familyId, memberName, colorIndex) {

@@ -13,7 +13,7 @@ import { startOfWeek } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import uuid from 'react-native-uuid';
 import {
-  onAuthStateChanged, getFamilyId,
+  onAuthStateChanged, subscribeToFamilyId,
   subscribeToMembers, subscribeToRequests,
   addRequest as fbAddRequest,
   updateRequestStatus as fbUpdateStatus,
@@ -69,12 +69,17 @@ export function AppProvider({ children }) {
   const unsubscribeMembers = useRef(null);
   const unsubscribeRequests = useRef(null);
   const unsubscribeMealPlans = useRef(null);
+  const unsubscribeUserDoc = useRef(null);
   const pushRegisteredRef = useRef(false);
 
   // ── Auth state listener ────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(async (user) => {
       setAuthUser(user);
+
+      // Clean up any previous /users/{uid} listener before attaching a new one
+      unsubscribeUserDoc.current?.();
+      unsubscribeUserDoc.current = null;
 
       if (!user) {
         // Signed out — load local data
@@ -84,20 +89,30 @@ export function AppProvider({ children }) {
         return;
       }
 
-      // Check for Firestore family
-      const fid = await getFamilyId();
-      if (fid) {
-        setFamilyId(fid);
-        setIsSynced(true);
-        attachFirestoreListeners(fid);
-      } else {
-        // Authenticated but no family yet (e.g. just created account)
-        await loadLocalData();
-        setIsSynced(false);
-      }
-      setLoaded(true);
+      // Subscribe to /users/{uid} instead of a one-shot getDoc read.
+      // This fires immediately with the current value AND again if createFamily()
+      // commits its batch after this callback fires (new-account race condition).
+      // On permission-denied (anonymous users) it calls back with null.
+      let firstRead = true;
+      unsubscribeUserDoc.current = subscribeToFamilyId(user.uid, async (fid) => {
+        if (fid) {
+          setFamilyId(fid);
+          setIsSynced(true);
+          attachFirestoreListeners(fid);
+          setLoaded(true);
+        } else if (firstRead) {
+          // No family on first read — load local fallback (guest / new account)
+          await loadLocalData();
+          setIsSynced(false);
+          setLoaded(true);
+        }
+        firstRead = false;
+      });
     });
-    return unsub;
+    return () => {
+      unsub();
+      unsubscribeUserDoc.current?.();
+    };
   }, []);
 
   // ── Firestore real-time listeners ──────────────────────────────────────────
@@ -130,6 +145,7 @@ export function AppProvider({ children }) {
       unsubscribeMembers.current?.();
       unsubscribeRequests.current?.();
       unsubscribeMealPlans.current?.();
+      unsubscribeUserDoc.current?.();
     };
   }, []);
 
