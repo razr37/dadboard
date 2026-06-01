@@ -17,23 +17,27 @@ export default function DadHomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [showSetup, setShowSetup] = useState(null); // null = loading, true/false = known
 
-  // Step completion derived from live context state
-  const step2Done = family.length > 1;           // at least one member beyond Dad
-  const step3Done = requests.length > 0;          // at least one request received
+  // Step completion derived from live Firestore state
+  const step2Done = family.length > 1;  // at least one member beyond Dad
+  const step3Done = requests.length > 0; // at least one request received
 
+  // Runs on every mount — DadHomeScreen remounts on sign-out/sign-in because
+  // AppProvider (and the whole nav tree) is torn down and rebuilt by Root.
+  // useEffect(fn, []) means "once per mount lifecycle", not "once forever".
   useEffect(() => {
     AsyncStorage.getItem(SETUP_KEY).then(val => {
       setShowSetup(val !== 'yes');
     });
   }, []);
 
-  // Auto-complete and persist when all steps are done
+  // Persist completion and hide wizard as soon as both steps are done,
+  // regardless of whether showSetup was true or still null (loading).
   useEffect(() => {
-    if (showSetup && step2Done && step3Done) {
+    if (step2Done && step3Done && showSetup !== false) {
       AsyncStorage.setItem(SETUP_KEY, 'yes');
       setShowSetup(false);
     }
-  }, [showSetup, step2Done, step3Done]);
+  }, [step2Done, step3Done, showSetup]);
 
   const pickups = getTodayRequests();
   const buyItems = getPendingBuyRequests();
@@ -88,8 +92,8 @@ export default function DadHomeScreen({ navigation }) {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {/* First-time setup wizard */}
-        {showSetup === true && (
+        {/* First-time setup wizard — show only when key not set AND at least one step still incomplete */}
+        {showSetup === true && (!step2Done || !step3Done) && (
           <SetupWizard
             step2Done={step2Done}
             step3Done={step3Done}
