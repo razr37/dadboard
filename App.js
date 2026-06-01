@@ -7,7 +7,7 @@
 //   4. If no consent → show ConsentScreen
 //   5. If consented → show main app (Dad view or Kid view based on role)
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Linking } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
@@ -145,6 +145,11 @@ function Root() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [consentGiven, setConsentGiven] = useState(null);
   const [initialInviteCode, setInitialInviteCode] = useState(null);
+  // Prevents onAuthStateChanged from overwriting consentGiven=true after the user
+  // just tapped "I agree". Without this, a concurrent token refresh fires the listener
+  // which calls hasConsented() before the AsyncStorage write completes, gets false,
+  // and overwrites the true we just set — leaving the app stuck on ConsentScreen.
+  const justConsented = useRef(false);
 
   // Deep link handling — captures invite code from https://dadboard.app/join?code=...
   useEffect(() => {
@@ -163,8 +168,12 @@ function Root() {
     const unsub = onAuthStateChanged(async (user) => {
       setIsAuthed(!!user);
       if (user) {
-        const consented = await hasConsented();
-        setConsentGiven(consented);
+        // Skip hasConsented() if the user just tapped "I agree" in this session —
+        // the AsyncStorage write may not have completed yet and would return false.
+        if (!justConsented.current) {
+          const consented = await hasConsented();
+          setConsentGiven(consented);
+        }
       }
       setAuthChecked(true);
     });
@@ -199,7 +208,7 @@ function Root() {
         <StatusBar style="dark" />
         <AppNavigator
           consentGiven={consentGiven}
-          onConsentAccepted={() => setConsentGiven(true)}
+          onConsentAccepted={() => { justConsented.current = true; setConsentGiven(true); }}
           initialInviteCode={initialInviteCode}
         />
       </NavigationContainer>

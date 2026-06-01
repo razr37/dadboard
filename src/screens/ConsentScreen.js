@@ -158,14 +158,9 @@ export default function ConsentScreen({ onAccept }) {
   }
 
   async function handleAccept() {
-    Alert.alert('Debug 1', 'handleAccept called — onAccept type: ' + typeof onAccept);
-    try {
-      await recordConsent(regionInfo);
-      Alert.alert('Debug 2', 'recordConsent done');
-    } catch (e) {
-      Alert.alert('Debug 2', 'recordConsent FAILED: ' + e.message);
+    try { await recordConsent(regionInfo); } catch (e) {
+      console.error('[ConsentScreen] recordConsent failed:', e);
     }
-    Alert.alert('Debug 3', 'onAccept calling now');
     onAccept();
   }
 
@@ -222,6 +217,9 @@ export default function ConsentScreen({ onAccept }) {
         onScroll={handleScroll}
         scrollEventThrottle={200}
         showsVerticalScrollIndicator
+        persistentScrollbar
+        indicatorStyle="black"
+        scrollIndicatorInsets={{ right: 1 }}
       >
         <PolicySection icon="person-outline" title="What we collect">
           {`Family member names, children's activity names, pickup locations, dates/times, and shopping requests.\n\nWe do NOT collect GPS location, photos, contacts, or any financial data.`}
