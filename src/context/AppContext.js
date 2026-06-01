@@ -363,7 +363,7 @@ export function AppProvider({ children }) {
   }
 
   function getPendingBuyRequests() {
-    return requests.filter(r => r.type === 'buy' && r.status === 'pending');
+    return requests.filter(r => r.type === 'buy' && (!r.status || r.status === 'pending'));
   }
 
   return (

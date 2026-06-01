@@ -232,6 +232,7 @@ export function subscribeToRequests(familyId, callback) {
         // Default fields that the Telegram bot omits (it uses Admin SDK and skips security rules)
         status: data.status ?? 'pending',
         fromId: data.fromId ?? '',
+        colorIndex: data.colorIndex ?? 0,
         createdAt: data.createdAt?.toMillis?.() || Date.now(),
       };
     });
