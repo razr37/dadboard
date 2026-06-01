@@ -92,9 +92,11 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
 - `Localization.region` is the primary source. The locale-string fallback (e.g. `"en-SG"` → `"SG"`) is skipped for globally-distributed language codes (`en`, `fr`, `es`, `pt`, `nl`, `de`) because tags like `en-GB` are standard on non-EU devices in SG, MY, HK, AU.
 - If `Localization.region` is null (no SIM, emulator, some Android builds), `isEU` is `false` and `regionCode` defaults to `'SG'`.
 
-**`handleAccept`**: async; `setAccepting(true)` shows a spinner on the button, `await recordConsent(regionInfo)` saves to AsyncStorage, then `onAccept()` fires. Storage failure is caught and logged — `onAccept()` always runs. `ConsentScreen` contains **no navigation logic**; App.js owns all routing via the `onAccept` prop.
+**`handleAccept`**: bare minimum — `try { await recordConsent(regionInfo); } catch {}` then `onAccept()` unconditionally. No loading state, no conditions. `ConsentScreen` contains **no navigation logic**; App.js owns all routing via the `onAccept` prop.
 
-**Scroll fallback timer**: 2 seconds (was 10s) — unlocks the button if all checkboxes are ticked but the content never scrolled to the `-100px` threshold (common on tall screens).
+**Race condition guard** (`justConsented` ref in App.js): `onAuthStateChanged` can fire mid-consent (token refresh) and call `hasConsented()` before the AsyncStorage write completes, getting `false` and overwriting `consentGiven=true`. The `justConsented = useRef(false)` ref is set to `true` in `onConsentAccepted` before `setConsentGiven(true)`. The auth listener skips `hasConsented()` when the ref is true.
+
+**Scroll fallback timer**: 2 seconds — unlocks the button if all checkboxes are ticked but the content never scrolled to the `-100px` threshold (common on tall screens).
 
 ### Push notifications (src/utils/notifications.js)
 
@@ -260,6 +262,8 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
 - Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
 - AuthScreen: create-account password bled into sign-in flow — `password` state was shared; split into `createPassword` (create form) and `signInPassword` (sign-in form); sign-in mode activated via `signInMode` boolean
+- ConsentScreen: "I agree" tapped but nothing happened — `onAuthStateChanged` token refresh fired during `recordConsent`, called `hasConsented()` before write completed, got `false`, overwrote `consentGiven=true`; fixed with `justConsented` ref in Root
+- KidHomeScreen: crash on switching to kid profile — `currentUser.colorIndex` could be `undefined` (new kid) making array index `NaN`; fixed with `Math.max(0, currentUser?.colorIndex ?? 0) % 5`
 - PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
 - PrivacySettingsScreen + SettingsScreen: single try/catch meant cloud failure blocked local cleanup; split into independent blocks so AsyncStorage always clears
 - MealsScreen, KidHomeScreen, AppContext: `toISOString()` UTC offset caused wrong week on SGT devices — all replaced with `toLocalDateStr()` + `date-fns startOfWeek`; kid writes and Dad reads now use the same Firestore key
