@@ -35,7 +35,10 @@ const LOCAL_KEYS = {
   REQUESTS: 'dadboard_requests',
   CURRENT_USER: 'dadboard_current_user',
   MEAL_PLANS: 'dadboard_meal_plans',
+  FAVOURITE_PLACES: 'dadboard_favourite_places',
 };
+
+const DEFAULT_FAVOURITE_PLACES = ['Home', 'School', 'Office'];
 
 function toLocalDateStr(date) {
   const y = date.getFullYear();
@@ -61,6 +64,7 @@ export function AppProvider({ children }) {
   const [loaded, setLoaded] = useState(false);
   const [isSynced, setIsSynced] = useState(false);      // true = using Firestore
   const [mealPlans, setMealPlans] = useState({});       // { [memberId]: { [weekStart]: { [date]: { lunch, dinner } } } }
+  const [favouritePlaces, setFavouritePlaces] = useState(DEFAULT_FAVOURITE_PLACES);
 
   const unsubscribeMembers = useRef(null);
   const unsubscribeRequests = useRef(null);
@@ -128,6 +132,32 @@ export function AppProvider({ children }) {
       unsubscribeMealPlans.current?.();
     };
   }, []);
+
+  // ── Favourite places (device-local, not synced to Firestore) ─────────────────
+  // Loaded on mount for both guest and sync mode users.
+  useEffect(() => {
+    AsyncStorage.getItem(LOCAL_KEYS.FAVOURITE_PLACES).then(raw => {
+      if (raw) {
+        setFavouritePlaces(JSON.parse(raw));
+      } else {
+        AsyncStorage.setItem(LOCAL_KEYS.FAVOURITE_PLACES, JSON.stringify(DEFAULT_FAVOURITE_PLACES));
+      }
+    }).catch(() => {});
+  }, []);
+
+  async function addFavouritePlace(name) {
+    const trimmed = name.trim();
+    if (!trimmed || favouritePlaces.includes(trimmed)) return;
+    const updated = [...favouritePlaces, trimmed];
+    setFavouritePlaces(updated);
+    await AsyncStorage.setItem(LOCAL_KEYS.FAVOURITE_PLACES, JSON.stringify(updated));
+  }
+
+  async function removeFavouritePlace(name) {
+    const updated = favouritePlaces.filter(p => p !== name);
+    setFavouritePlaces(updated);
+    await AsyncStorage.setItem(LOCAL_KEYS.FAVOURITE_PLACES, JSON.stringify(updated));
+  }
 
   // ── Push notification registration (parent's device only) ──────────────────
   // Runs once after family loads. Stores token in Firestore member doc (sync)
@@ -327,6 +357,7 @@ export function AppProvider({ children }) {
       requests, addRequest, updateRequestStatus, deleteRequest,
       addFamilyMember, getTodayRequests, getPendingBuyRequests,
       mealPlans, setMealDay,
+      favouritePlaces, addFavouritePlace, removeFavouritePlace,
     }}>
       {children}
     </AppContext.Provider>

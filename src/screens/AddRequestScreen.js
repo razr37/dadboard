@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Alert, Platform
+  ScrollView, FlatList, StyleSheet, Alert, Platform
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +21,7 @@ const URGENCY_OPTIONS = ['Today', 'This weekend', 'This week', 'No rush'];
 const VALID_TYPES = new Set(REQUEST_TYPES.map(t => t.key));
 
 export default function AddRequestScreen({ navigation, route }) {
-  const { currentUser, addRequest } = useApp();
+  const { currentUser, addRequest, favouritePlaces, addFavouritePlace, removeFavouritePlace } = useApp();
   const [type, setType] = useState(() => {
     const dt = route?.params?.defaultType;
     if (!dt) return 'pickup';
@@ -145,12 +145,10 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'pickup' && (
           <View style={styles.form}>
             <Field label="Activity / Class name" required>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Maths tuition, Swimming..."
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={activity}
                 onChangeText={setActivity}
+                placeholder="e.g. Maths tuition, Swimming..."
               />
             </Field>
 
@@ -204,32 +202,42 @@ export default function AddRequestScreen({ navigation, route }) {
             )}
 
             <Field label="Pickup location" required>
-              <TextInput
-                style={styles.input}
-                placeholder="Address or place name"
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={location}
                 onChangeText={setLocation}
+                placeholder="Address or place name"
+                onSave={() => addFavouritePlace(location)}
+                isSaved={favouritePlaces.includes(location.trim())}
+              />
+              <FavChips
+                places={favouritePlaces}
+                onSelect={setLocation}
+                currentValue={location}
+                onRemove={removeFavouritePlace}
               />
             </Field>
 
             <Field label="Drop me to">
-              <TextInput
-                style={styles.input}
-                placeholder="Home"
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={dropTo}
                 onChangeText={setDropTo}
+                placeholder="Home"
+                onSave={() => addFavouritePlace(dropTo)}
+                isSaved={favouritePlaces.includes(dropTo.trim())}
+              />
+              <FavChips
+                places={favouritePlaces}
+                onSelect={setDropTo}
+                currentValue={dropTo}
+                onRemove={removeFavouritePlace}
               />
             </Field>
 
             <Field label="Note for Dad">
-              <TextInput
-                style={[styles.input, styles.textarea]}
-                placeholder="Any extra info..."
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={note}
                 onChangeText={setNote}
+                placeholder="Any extra info..."
                 multiline
                 numberOfLines={3}
               />
@@ -241,12 +249,10 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'buy' && (
           <View style={styles.form}>
             <Field label="What do you need?" required>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Milo tins, new shoes (size 6)..."
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={item}
                 onChangeText={setItem}
+                placeholder="e.g. Milo tins, new shoes (size 6)..."
               />
             </Field>
 
@@ -265,12 +271,10 @@ export default function AddRequestScreen({ navigation, route }) {
             </Field>
 
             <Field label="Extra details">
-              <TextInput
-                style={[styles.input, styles.textarea]}
-                placeholder="Brand, size, colour..."
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={note}
                 onChangeText={setNote}
+                placeholder="Brand, size, colour..."
                 multiline
                 numberOfLines={3}
               />
@@ -282,12 +286,10 @@ export default function AddRequestScreen({ navigation, route }) {
         {type === 'other' && (
           <View style={styles.form}>
             <Field label="Your request" required>
-              <TextInput
-                style={[styles.input, styles.textarea]}
-                placeholder="What do you need from Dad?"
-                placeholderTextColor={colors.textTertiary}
+              <ClearableInput
                 value={message}
                 onChangeText={setMessage}
+                placeholder="What do you need from Dad?"
                 multiline
                 numberOfLines={4}
               />
@@ -331,6 +333,86 @@ function Field({ label, children, required, style }) {
   );
 }
 
+// TextInput with an inline × clear button and optional bookmark-save icon.
+function ClearableInput({ value, onChangeText, onSave, isSaved, multiline, numberOfLines, placeholder, ...rest }) {
+  const showClear  = value.length > 0;
+  const showSave   = !!onSave && value.trim().length > 0 && !isSaved;
+  const extraRight = (showClear ? 1 : 0) * 28 + (showSave ? 1 : 0) * 28;
+
+  return (
+    <View style={styles.clearableWrapper}>
+      <TextInput
+        style={[
+          styles.input,
+          multiline && styles.textarea,
+          { paddingRight: spacing.md + extraRight },
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textTertiary}
+        multiline={multiline}
+        numberOfLines={numberOfLines}
+        textAlignVertical={multiline ? 'top' : undefined}
+        {...rest}
+      />
+      <View style={[styles.clearableActions, multiline && { top: spacing.sm, bottom: undefined }]}>
+        {showSave && (
+          <TouchableOpacity
+            onPress={onSave}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            style={styles.clearableBtn}
+          >
+            <Ionicons name="bookmark-outline" size={15} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        {showClear && (
+          <TouchableOpacity
+            onPress={() => onChangeText('')}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            style={styles.clearableBtn}
+          >
+            <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// Horizontal scrollable row of saved favourite place chips.
+function FavChips({ places, onSelect, currentValue, onRemove }) {
+  if (!places || places.length === 0) return null;
+  return (
+    <FlatList
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      data={places}
+      keyExtractor={item => item}
+      contentContainerStyle={styles.chipRow}
+      style={styles.chipScroll}
+      renderItem={({ item: place }) => {
+        const active = currentValue.trim() === place;
+        return (
+          <TouchableOpacity
+            style={[styles.chip, active && styles.chipActive]}
+            onPress={() => onSelect(place)}
+            onLongPress={() =>
+              Alert.alert('Remove favourite', `Remove "${place}" from favourites?`, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Remove', style: 'destructive', onPress: () => onRemove(place) },
+              ])
+            }
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.chipText, active && styles.chipTextActive]}>{place}</Text>
+          </TouchableOpacity>
+        );
+      }}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
@@ -362,6 +444,30 @@ const styles = StyleSheet.create({
     fontSize: 15, color: colors.textPrimary,
   },
   textarea: { height: 80, textAlignVertical: 'top' },
+  clearableWrapper: { position: 'relative' },
+  clearableActions: {
+    position: 'absolute',
+    right: spacing.sm,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  clearableBtn: { padding: 2 },
+  chipScroll: { marginTop: spacing.sm },
+  chipRow: { gap: spacing.sm, paddingBottom: 2 },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.muted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipActive: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  chipText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
+  chipTextActive: { color: colors.primaryDark, fontWeight: '600' },
   pickerBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   pickerText: { fontSize: 14, color: colors.textPrimary, flex: 1 },
   row: { flexDirection: 'row' },
