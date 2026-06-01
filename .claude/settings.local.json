@@ -15,7 +15,9 @@
       "Bash(npm uninstall *)",
       "Bash(npx expo *)",
       "Bash(git *)",
-      "Bash(jobs -l)"
+      "Bash(jobs -l)",
+      "Bash(grep -n \"family, requests\\\\|value={{\" /Users/razr/Dadboard-work/src/context/AppContext.js)",
+      "Bash(eas build *)"
     ]
   }
 }
