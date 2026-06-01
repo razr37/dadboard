@@ -270,8 +270,8 @@ export default function PrivacySettingsScreen({ navigation }) {
             <Text style={styles.contactEmail}>dadboard.privacy@gmail.com</Text>
           </TouchableOpacity>
           {isEU && (
-            <TouchableOpacity onPress={() => Linking.openURL('mailto:dadboard.eu@gmail.com')}>
-              <Text style={styles.contactEmail}>dadboard.eu@gmail.com (EU representative)</Text>
+            <TouchableOpacity onPress={() => Linking.openURL('mailto:dadboard.privacy@gmail.com')}>
+              <Text style={styles.contactEmail}>dadboard.privacy@gmail.com (EU representative)</Text>
             </TouchableOpacity>
           )}
           <Text style={[styles.contactNote]}>We respond within {isEU ? '1 month (GDPR)' : '30 days (PDPA)'}.</Text>

@@ -44,7 +44,7 @@ export default function KidHomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header with quick actions */}
       <View style={[styles.header, { backgroundColor: kidColorLight }]}>
         <View style={styles.headerTop}>
           <Avatar name={currentUser?.name ?? ''} colorIndex={safeIndex} size={44} />
@@ -57,18 +57,7 @@ export default function KidHomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.bigAddBtn, { backgroundColor: kidColor }]}
-          onPress={() => navigation.navigate('AddRequest')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add" size={20} color={colors.white} />
-          <Text style={styles.bigAddText}>New request</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {/* Quick actions */}
+        {/* Quick actions live in the header so they're the primary action */}
         <View style={styles.quickRow}>
           <QuickBtn
             icon="car-outline"
@@ -89,6 +78,9 @@ export default function KidHomeScreen({ navigation }) {
             onPress={() => navigation.navigate('AddRequest', { defaultType: 'other' })}
           />
         </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
         {/* Meals this week */}
         <Text style={styles.sectionLabel}>MEALS THIS WEEK</Text>
@@ -273,15 +265,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center',
     ...shadow.sm,
   },
-  bigAddBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.sm, paddingVertical: 14, borderRadius: radius.md,
-  },
-  bigAddText: { color: colors.white, fontSize: 15, fontWeight: '700' },
-  scroll: { paddingTop: spacing.lg },
+  scroll: { paddingTop: spacing.md },
   quickRow: {
     flexDirection: 'row', gap: spacing.md,
-    paddingHorizontal: spacing.lg, marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   quickBtn: { flex: 1, alignItems: 'center', gap: spacing.sm },
   quickIcon: {

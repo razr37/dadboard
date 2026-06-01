@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet,
   Share, Clipboard, Alert, Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,7 +80,7 @@ export default function InviteScreen({ navigation }) {
         <View style={{ width: 36 }} />
       </View>
 
-      <View style={styles.scroll}>
+      <ScrollView showsVerticalScrollIndicator contentContainerStyle={styles.scroll}>
         {/* Invite link card */}
         <View style={[styles.codeCard, shadow.md]}>
           <Text style={styles.codeLabel}>Your family invite link</Text>
@@ -157,7 +157,7 @@ export default function InviteScreen({ navigation }) {
           <HowStep num="3" text="They create their account and appear in your family list" />
           <HowStep num="4" text="They can submit pickup requests straight to your dashboard" />
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
   title: { ...typography.h3, color: colors.textPrimary },
-  scroll: { padding: spacing.lg },
+  scroll: { padding: spacing.lg, paddingBottom: 100 },
   codeCard: {
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     padding: spacing.xl, marginBottom: spacing.xl, alignItems: 'center',
