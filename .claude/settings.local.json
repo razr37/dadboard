@@ -17,7 +17,8 @@
       "Bash(git *)",
       "Bash(jobs -l)",
       "Bash(grep -n \"family, requests\\\\|value={{\" /Users/razr/Dadboard-work/src/context/AppContext.js)",
-      "Bash(eas build *)"
+      "Bash(eas build *)",
+      "Read(//Users/razr/dadboard-bot/**)"
     ]
   }
 }

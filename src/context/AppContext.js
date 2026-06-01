@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import uuid from 'react-native-uuid';
 import {
   onAuthStateChanged, subscribeToFamilyId,
-  subscribeToMembers, subscribeToRequests,
+  subscribeToFamily, subscribeToMembers, subscribeToRequests,
   addRequest as fbAddRequest,
   updateRequestStatus as fbUpdateStatus,
   deleteRequest as fbDeleteRequest,
@@ -63,12 +63,14 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(DEFAULT_USER);
   const [loaded, setLoaded] = useState(false);
   const [isSynced, setIsSynced] = useState(false);      // true = using Firestore
+  const [isPro, setIsPro] = useState(false);
   const [mealPlans, setMealPlans] = useState({});       // { [memberId]: { [weekStart]: { [date]: { lunch, dinner } } } }
   const [favouritePlaces, setFavouritePlaces] = useState(DEFAULT_FAVOURITE_PLACES);
 
   const unsubscribeMembers = useRef(null);
   const unsubscribeRequests = useRef(null);
   const unsubscribeMealPlans = useRef(null);
+  const unsubscribeFamily = useRef(null);
   const unsubscribeUserDoc = useRef(null);
   const pushRegisteredRef = useRef(false);
 
@@ -118,9 +120,14 @@ export function AppProvider({ children }) {
   // ── Firestore real-time listeners ──────────────────────────────────────────
   function attachFirestoreListeners(fid) {
     // Unsubscribe any previous listeners
+    unsubscribeFamily.current?.();
     unsubscribeMembers.current?.();
     unsubscribeRequests.current?.();
     unsubscribeMealPlans.current?.();
+
+    unsubscribeFamily.current = subscribeToFamily(fid, (familyDoc) => {
+      setIsPro(familyDoc?.isPro === true);
+    });
 
     unsubscribeMembers.current = subscribeToMembers(fid, (members) => {
       setFamily(members);
@@ -142,6 +149,7 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     return () => {
+      unsubscribeFamily.current?.();
       unsubscribeMembers.current?.();
       unsubscribeRequests.current?.();
       unsubscribeMealPlans.current?.();
@@ -368,7 +376,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      authUser, familyId, isSynced, loaded,
+      authUser, familyId, isSynced, isPro, loaded,
       family, currentUser, switchUser, updateCurrentUserName,
       requests, addRequest, updateRequestStatus, deleteRequest,
       addFamilyMember, getTodayRequests, getPendingBuyRequests,

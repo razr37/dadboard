@@ -38,6 +38,7 @@ import SwitchUserScreen from './src/screens/SwitchUserScreen';
 import InviteScreen from './src/screens/InviteScreen';
 import PrivacySettingsScreen from './src/screens/PrivacySettingsScreen';
 import MealsScreen from './src/screens/MealsScreen';
+import ProUpgradeScreen from './src/screens/ProUpgradeScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -112,6 +113,7 @@ function AppNavigator({ initialInviteCode }) {
         {() => <AuthScreen initialInviteCode={initialInviteCode} />}
       </Stack.Screen>
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="ProUpgrade" component={ProUpgradeScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
       <Stack.Screen name="Shopping" component={ShoppingScreen} />
     </Stack.Navigator>

@@ -3,22 +3,46 @@
 //   1. Telegram bot — no app needed, any phone
 //   2. Dadboard app — full experience, Play Store
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Clipboard, Alert, Linking
+  Clipboard, Alert, Linking, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { generateTelegramInvite, auth } from '../utils/firebase';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 
 const TELEGRAM_BOT = 'DadboardBot';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.dadboard.app';
 
 export default function InviteScreen({ navigation }) {
-  const { familyId, isSynced, family } = useApp();
+  const { familyId, isSynced, isPro, family } = useApp();
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedApp, setCopiedApp] = useState(false);
+  const [inviteToken, setInviteToken] = useState(null);
+  const [tokenExpiry, setTokenExpiry] = useState(null);
+  const [generatingToken, setGeneratingToken] = useState(false);
+
+  async function generateToken() {
+    if (!familyId || !auth.currentUser?.uid) return;
+    setGeneratingToken(true);
+    try {
+      const token = await generateTelegramInvite(familyId, auth.currentUser.uid);
+      setInviteToken(token);
+      setTokenExpiry(new Date(Date.now() + 48 * 60 * 60 * 1000));
+    } catch (e) {
+      Alert.alert('Error', 'Could not generate invite link. Please try again.');
+    } finally {
+      setGeneratingToken(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isPro && isSynced && familyId) {
+      generateToken();
+    }
+  }, []);
 
   // ── Guest mode gate ────────────────────────────────────────────────────────
   if (!isSynced || !familyId) {
@@ -40,11 +64,21 @@ export default function InviteScreen({ navigation }) {
   }
 
   // ── Invite links ────────────────────────────────────────────────────────────
-  const telegramLink = `https://t.me/${TELEGRAM_BOT}?start=${familyId}`;
-  const telegramMessage =
-    `Join our family on Dadboard! 🚗\n\n` +
-    `Send your pickup requests, shopping needs and meal plans directly to Dad — no app needed, just Telegram.\n\n` +
-    `Tap to start: ${telegramLink}`;
+  const telegramLink = inviteToken ? `https://t.me/${TELEGRAM_BOT}?start=${inviteToken}` : null;
+  const telegramMessage = inviteToken
+    ? `Join my Dadboard family! Message @${TELEGRAM_BOT} on Telegram with this link: t.me/${TELEGRAM_BOT}?start=${inviteToken} (expires in 48 hours)`
+    : null;
+
+  function formatExpiry(date) {
+    if (!date) return '';
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const h = date.getHours();
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const hour12 = h % 12 || 12;
+    return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]} at ${hour12}:${mins}${ampm}`;
+  }
 
   const appMessage =
     `Join my Dadboard family! 🚗\n\n` +
@@ -74,40 +108,79 @@ export default function InviteScreen({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
         {/* ── Telegram invite ──────────────────────────────────────────────── */}
-        <View style={[styles.card, shadow.md]}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.cardIconBg, { backgroundColor: '#E8F4FD' }]}>
-              <Ionicons name="paper-plane-outline" size={22} color="#229ED9" />
+        {isPro ? (
+          <View style={[styles.card, shadow.md]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIconBg, { backgroundColor: '#E8F4FD' }]}>
+                <Ionicons name="paper-plane-outline" size={22} color="#229ED9" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>Invite via Telegram Bot</Text>
+                <Text style={styles.cardSub}>For family members on any phone — no app needed</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Invite via Telegram Bot</Text>
-              <Text style={styles.cardSub}>For family members on any phone — no app needed</Text>
+
+            {generatingToken || !inviteToken ? (
+              <View style={styles.tokenLoading}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.tokenLoadingText}>Generating secure link…</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.linkBox}>
+                  <Text style={styles.linkText} numberOfLines={1}>{telegramLink}</Text>
+                </View>
+                <Text style={styles.expiryNote}>Link expires {formatExpiry(tokenExpiry)} · one-time use</Text>
+
+                <TouchableOpacity style={styles.whatsappBtn} onPress={() => handleWhatsApp(telegramMessage)}>
+                  <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
+                  <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.copyBtn, copiedTelegram && styles.copyBtnDone]}
+                  onPress={() => handleCopy(telegramLink, setCopiedTelegram)}
+                >
+                  <Ionicons
+                    name={copiedTelegram ? 'checkmark-outline' : 'copy-outline'}
+                    size={15}
+                    color={copiedTelegram ? colors.success : colors.primary}
+                  />
+                  <Text style={[styles.copyBtnText, copiedTelegram && { color: colors.success }]}>
+                    {copiedTelegram ? 'Copied!' : 'Copy link'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.regenerateBtn} onPress={generateToken}>
+                  <Ionicons name="refresh-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.regenerateBtnText}>Generate new link</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        ) : (
+          <View style={[styles.card, shadow.md, styles.lockedCard]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIconBg, { backgroundColor: colors.muted }]}>
+                <Ionicons name="lock-closed" size={22} color={colors.textTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTitle, { color: colors.textTertiary }]}>Invite via Telegram Bot</Text>
+                <Text style={styles.cardSub}>Pro feature — no app needed for iPhone users</Text>
+              </View>
             </View>
-          </View>
-
-          <View style={styles.linkBox}>
-            <Text style={styles.linkText} numberOfLines={1}>{telegramLink}</Text>
-          </View>
-
-          <TouchableOpacity style={styles.whatsappBtn} onPress={() => handleWhatsApp(telegramMessage)}>
-            <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
-            <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.copyBtn, copiedTelegram && styles.copyBtnDone]}
-            onPress={() => handleCopy(telegramLink, setCopiedTelegram)}
-          >
-            <Ionicons
-              name={copiedTelegram ? 'checkmark-outline' : 'copy-outline'}
-              size={15}
-              color={copiedTelegram ? colors.success : colors.primary}
-            />
-            <Text style={[styles.copyBtnText, copiedTelegram && { color: colors.success }]}>
-              {copiedTelegram ? 'Copied!' : 'Copy link'}
+            <Text style={styles.lockedDesc}>
+              Let family members send requests directly via Telegram — no app installation needed for iPhone users.
             </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.proBtn}
+              onPress={() => navigation.navigate('ProUpgrade')}
+            >
+              <Ionicons name="star" size={15} color={colors.white} />
+              <Text style={styles.proBtnText}>Upgrade to Pro</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── App invite ───────────────────────────────────────────────────── */}
         <View style={[styles.card, shadow.md]}>
@@ -282,6 +355,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2,
   },
   ownerBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primaryDark },
+
+  // ── Token UI ───────────────────────────────────────────────────────────────
+  tokenLoading: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, paddingVertical: spacing.lg,
+  },
+  tokenLoadingText: { ...typography.bodySmall, color: colors.textSecondary },
+  expiryNote: {
+    ...typography.caption, color: colors.textTertiary,
+    textAlign: 'center', marginBottom: spacing.md,
+  },
+  regenerateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.xs, marginTop: spacing.sm, paddingVertical: spacing.sm,
+  },
+  regenerateBtnText: { ...typography.caption, color: colors.textSecondary },
+
+  // ── Pro gate ───────────────────────────────────────────────────────────────
+  lockedCard: { borderWidth: 1, borderColor: colors.border },
+  lockedDesc: {
+    ...typography.bodySmall, color: colors.textSecondary,
+    lineHeight: 19, marginBottom: spacing.lg,
+  },
+  proBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, backgroundColor: colors.primary,
+    borderRadius: radius.md, paddingVertical: 12,
+  },
+  proBtnText: { color: colors.white, fontSize: 14, fontWeight: '700' },
 
   // ── Guest wall ─────────────────────────────────────────────────────────────
   guestWall: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },

@@ -31,7 +31,7 @@ import {
   getDoc, setDoc, updateDoc, deleteDoc,
   getDocs, onSnapshot,
   query, orderBy, where,
-  writeBatch, serverTimestamp, increment,
+  writeBatch, serverTimestamp, increment, Timestamp,
 } from 'firebase/firestore';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -44,7 +44,7 @@ const app = initializeApp({
   appId: '1:382739338353:android:ac6c17525e6dcf29f977d0',
 });
 
-const auth = initializeAuth(app, {
+export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage),
 });
 
@@ -185,7 +185,38 @@ export async function joinFamily(familyId, memberName, colorIndex) {
   await batch.commit();
 }
 
+// ─── Telegram invite tokens ───────────────────────────────────────────────────
+
+export async function generateTelegramInvite(familyId, uid) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const token = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 48);
+
+  await setDoc(doc(db, 'invites', token), {
+    familyId,
+    createdBy: uid,
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(expiresAt),
+    used: false,
+  });
+
+  return token;
+}
+
 // ─── Members ──────────────────────────────────────────────────────────────────
+
+export function subscribeToFamily(familyId, callback) {
+  return onSnapshot(
+    doc(db, 'families', familyId),
+    (snap) => callback(snap.exists() ? snap.data() : null),
+    (err) => {
+      console.warn('[subscribeToFamily] error:', err.code);
+      callback(null);
+    }
+  );
+}
 
 export function subscribeToMembers(familyId, callback) {
   return onSnapshot(

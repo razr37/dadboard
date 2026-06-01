@@ -90,7 +90,7 @@ Two role-based navigators sit inside a root `Stack.Navigator`:
 - `DadTabs` (Tab.Navigator) — Today / Schedule / Shopping / Meals
 - `KidMain` (Stack.Navigator) — KidHomeScreen only, **no tab bar** (single screen needs no tabs)
 
-`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidMain`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth, Settings) are pushed onto the root stack and accessible from either navigator.
+`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidMain`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth, Settings, ProUpgrade) are pushed onto the root stack and accessible from either navigator.
 
 **Role-based access**: Settings, Privacy, Invite, and Manage Members have no entry points in `KidHomeScreen` — kids only navigate to `AddRequest` and `SwitchUser`. The routes are registered for all users but no kid-visible button calls them.
 
@@ -120,11 +120,12 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
 
 ```
 /users/{uid}                         ← maps uid → { familyId, role, name }
-/families/{familyId}                 ← family doc { familyName, ownerUid, memberCount }
+/families/{familyId}                 ← family doc { familyName, ownerUid, memberCount, isPro? }
 /families/{familyId}/members/{uid}   ← { name, role, colorIndex, uid, isLocalProfile? }
 /families/{familyId}/requests/{id}   ← { type, fromId, fromName, status, createdAt, ... }
 /families/{familyId}/mealPlans/{memberId}  ← { [weekStart: YYYY-MM-DD]: { [date]: { lunch: bool, dinner: bool } } }
 /telegram_users/{telegramId}         ← { telegramUserId, familyId, name, registeredAt }  (written by bot, Admin SDK)
+/invites/{token}                     ← { familyId, createdBy, createdAt, expiresAt, used }  (8-char token, 48hr TTL, one-time use)
 ```
 
 Request types: `pickup` (has `date`, `time`, `location`, `dropTo`), `buy` (has `item`, `urgency`), `other` (has `message`, `urgency`).
@@ -140,7 +141,7 @@ Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required
 
 InviteScreen shows **two invite paths**:
 
-**1. Telegram bot** — `https://t.me/DadboardBot?start={familyId}`. No app needed; any phone with Telegram can register. WhatsApp pre-writes a message explaining the bot. The bot registers the user in `/telegram_users/{telegramId}` and writes requests directly to Firestore using Admin SDK.
+**1. Telegram bot** — `https://t.me/DadboardBot?start={token}`. Pro feature. No app needed; any phone with Telegram can register. `generateTelegramInvite(familyId, uid)` in `firebase.js` creates an 8-char token (e.g. `X7K2M9PQ`) stored in `/invites/{token}` with a 48hr expiry and `used: false`. The token is auto-generated when the Pro Telegram card mounts and can be regenerated. The bot validates the token (invalid/used/expired), marks it `used: true`, and registers the user in `/telegram_users/{telegramId}`.
 
 **2. Dadboard app** — displays the raw `familyId` as a monospace invite code. WhatsApp message includes the Play Store URL. The recipient enters the code in AuthScreen → Join family tab.
 
@@ -154,7 +155,7 @@ InviteScreen shows **two invite paths**:
 
 Separate Node.js/Express project (not inside this repo). Receives Telegram webhooks and writes to the same Firestore project using **Firebase Admin SDK**, which bypasses security rules entirely.
 
-**Registration flow**: `/start {familyId}` → validates family exists → creates `/telegram_users/{telegramId}` with `{ telegramUserId, familyId, name }`.
+**Registration flow**: `/start {token}` → looks up `/invites/{token}` → validates not used / not expired → registers user in `/telegram_users/{telegramId}` → marks invite `used: true`. Invalid/used/expired tokens each return a distinct error message directing the user to ask Dad for a new one.
 
 **Request flow**: message text → Claude Haiku via `parseMessage()` → `saveRequest(familyId, {...parsed, fromName, rawMessage})` → `families/{familyId}/requests`.
 
@@ -230,6 +231,17 @@ Registered in `app.json` as the first plugin. Runs during every `npx expo prebui
 If a build fails with a missing drawable resource, check this plugin first. Both mods use `withDangerousMod` so they have direct filesystem access to `platformProjectRoot`.
 
 **`"icon"` is intentionally absent from the `expo-notifications` plugin config in `app.json`** — including it would cause expo-notifications to inject `@drawable/notification_icon` meta-data into `AndroidManifest.xml`, but `drawable-*/` is gitignored so the PNG is never present on a clean build. Removing the `"icon"` property stops the injection entirely. The `"color"` property is kept; expo-notifications generates `@color/notification_icon_color` which is satisfied.
+
+### Pro subscription gate
+
+`isPro` is a boolean derived from the `families/{familyId}` Firestore document field `isPro: true`. It is subscribed to via `subscribeToFamily(fid, callback)` in `attachFirestoreListeners` inside AppContext, exposed as `isPro` on the context, and defaults to `false`.
+
+Currently gated behind Pro:
+- **Telegram invite** (`InviteScreen.js`) — locked card with "Upgrade to Pro" button → `ProUpgradeScreen` when `isPro` is false. When true, auto-generates a token via `generateTelegramInvite` on mount and shows the Telegram link with expiry note and "Generate new link" button.
+
+`ProUpgradeScreen.js` — modal screen listing Pro benefits with checkmarks, SGD $3.99/month price, and an "Upgrade to Pro" button that opens `mailto:dadboard.privacy@gmail.com` with the family ID pre-filled. Activation is manual within 24 hours.
+
+**To enable Pro for testing**: set `isPro: true` on the `/families/{familyId}` document in Firebase console.
 
 ### Design system
 
