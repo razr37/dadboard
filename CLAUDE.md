@@ -79,6 +79,8 @@ else       → AppProvider + NavigationContainer + AppNavigator
 
 **Consent key**: `dadboard_consented` = `'yes'`. `revokeConsent()` in ConsentScreen clears this key (plus legacy keys). `AsyncStorage.clear()` in `performDelete` also clears it.
 
+**Setup wizard key**: `dadboard_setup_complete` = `'yes'`. Written by `DadHomeScreen` once all three setup steps are done (Step 1 always complete; Step 2 = `family.length > 1`; Step 3 = `requests.length > 0`). While the key is absent the wizard card renders above the summary strip. The card never shows again after the key is written — it is not cleared by `AsyncStorage.clear()` during account deletion (intentional: a fresh account starts clean anyway).
+
 **Splash screen**: `SplashScreen.hideAsync()` is called at module scope so the native splash dismisses as soon as the JS bundle loads. `app.json` sets `splash.backgroundColor` to `#F07C2A`. Do not add `SplashScreen.preventAutoHideAsync()` or the splash will hang.
 
 ### Navigation
@@ -122,6 +124,7 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
 /families/{familyId}/members/{uid}   ← { name, role, colorIndex, uid, isLocalProfile? }
 /families/{familyId}/requests/{id}   ← { type, fromId, fromName, status, createdAt, ... }
 /families/{familyId}/mealPlans/{memberId}  ← { [weekStart: YYYY-MM-DD]: { [date]: { lunch: bool, dinner: bool } } }
+/telegram_users/{telegramId}         ← { telegramUserId, familyId, name, registeredAt }  (written by bot, Admin SDK)
 ```
 
 Request types: `pickup` (has `date`, `time`, `location`, `dropTo`), `buy` (has `item`, `urgency`), `other` (has `message`, `urgency`).
@@ -133,17 +136,31 @@ Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required
 
 **`isParent()` in rules covers `'parent'`, `'spouse'`, and `'adult'`** — matches the app-level `isParent` check in `App.js`. If you add new adult roles, update this function in the rules too or those roles will be denied write access. Deploy with `firebase deploy --only firestore:rules` after any rules change.
 
-### Invite deep link (InviteScreen.js + AuthScreen.js + App.js)
+### Invite flow (InviteScreen.js + AuthScreen.js + App.js)
 
-Invite link format: `https://dadboard.app/join?code=FAMILYID`
+InviteScreen shows **two invite paths**:
 
-**Sending** (InviteScreen): generates the full URL, shows a WhatsApp button (`whatsapp://send?text=...` with `canOpenURL` guard), copy-link button, and generic share sheet. Raw `familyId` shown as a fallback note.
+**1. Telegram bot** — `https://t.me/DadboardBot?start={familyId}`. No app needed; any phone with Telegram can register. WhatsApp pre-writes a message explaining the bot. The bot registers the user in `/telegram_users/{telegramId}` and writes requests directly to Firestore using Admin SDK.
 
-**Receiving** (App.js `Root`): `Linking.getInitialURL()` handles cold-start opens; `Linking.addEventListener('url')` handles foreground opens. `parseInviteCode(url)` extracts the `?code=` param. `initialInviteCode` state flows through `Root` → `AppNavigator` → both `AuthScreen` instances (standalone + in-app modal).
+**2. Dadboard app** — displays the raw `familyId` as a monospace invite code. WhatsApp message includes the Play Store URL. The recipient enters the code in AuthScreen → Join family tab.
 
-**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: auto-switches to `'join'` tab, pre-fills `inviteCode` state, hides the code field (replaced by a green "detected" badge), and shows 3 fields (Name / Email / Password) instead of 4. Without a link: original 4-field form.
+**Deep link receiving** (App.js `Root`): `Linking.getInitialURL()` handles cold-start opens; `Linking.addEventListener('url')` handles foreground opens. `parseInviteCode(url)` extracts the `?code=` param from `https://dadboard.app/join?code=FAMILYID`. `initialInviteCode` state flows through `Root` → `AppNavigator` → both `AuthScreen` instances.
 
-**Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live — once the domain is purchased, set `autoVerify: true` and host `/.well-known/assetlinks.json` to get direct app opening without the chooser dialog.
+**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: auto-switches to `'join'` tab, pre-fills `inviteCode` state, hides the code field (replaced by a green "detected" badge), and shows 3 fields (Name / Email / Password) instead of 4.
+
+**Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live.
+
+### Telegram bot companion (`~/dadboard-bot/`)
+
+Separate Node.js/Express project (not inside this repo). Receives Telegram webhooks and writes to the same Firestore project using **Firebase Admin SDK**, which bypasses security rules entirely.
+
+**Registration flow**: `/start {familyId}` → validates family exists → creates `/telegram_users/{telegramId}` with `{ telegramUserId, familyId, name }`.
+
+**Request flow**: message text → Claude Haiku via `parseMessage()` → `saveRequest(familyId, {...parsed, fromName, rawMessage})` → `families/{familyId}/requests`.
+
+**Bot-written request fields**: `type`, `date`, `time`, `location`, `activity`, `item`, `urgency`, `fromName`, `rawMessage`, `createdAt`. Notably **absent**: `status` and `fromId` (Admin SDK skips rules that require them). `subscribeToRequests` in `firebase.js` defaults both: `status: data.status ?? 'pending'`, `fromId: data.fromId ?? ''`. Do not remove these defaults.
+
+**Date parsing**: `parser.js` builds its system prompt dynamically via `buildSystemPrompt()`, injecting today's date in SGT (`Asia/Singapore` timezone) on every call. This is critical — a static prompt causes the model to use its training cutoff date for relative terms like "tomorrow".
 
 ### AuthScreen.js — sign-in vs create-account state
 
@@ -210,9 +227,9 @@ Registered in `app.json` as the first plugin. Runs during every `npx expo prebui
 
 - **`withOrangeColors`** — sets `iconBackground` and `splashscreen_background` to `#F07C2A` in `android/.../colors.xml`
 - **`withBlankSplashLogo`** — writes a 1×1 transparent PNG to `drawable/splashscreen_logo.png` (satisfies the XML reference expo-splash-screen injects even when no splash image is configured)
-- **`withNotificationIcon`** — copies `assets/icon.png` into `drawable-{m,h,xh,xxh,xxxh}dpi/notification_icon.png` (required by the `expo-notifications` plugin; the `drawable-*/` tree is gitignored)
+If a build fails with a missing drawable resource, check this plugin first. Both mods use `withDangerousMod` so they have direct filesystem access to `platformProjectRoot`.
 
-If a build fails with a missing drawable resource, check this plugin first. All three mods use `withDangerousMod` so they have direct filesystem access to `platformProjectRoot`.
+**`"icon"` is intentionally absent from the `expo-notifications` plugin config in `app.json`** — including it would cause expo-notifications to inject `@drawable/notification_icon` meta-data into `AndroidManifest.xml`, but `drawable-*/` is gitignored so the PNG is never present on a clean build. Removing the `"icon"` property stops the injection entirely. The `"color"` property is kept; expo-notifications generates `@color/notification_icon_color` which is satisfied.
 
 ### Design system
 
@@ -300,6 +317,8 @@ cat node_modules/firebase/package.json | grep '"version"' | head -1
 - ConsentScreen: button stayed greyed out after ticking all checkboxes — scroll threshold tightened to `-100px` and 10s fallback timer added
 - AppContext / createFamily: new-account sign-up left app stuck in guest mode — `onAuthStateChanged` in AppContext fired before `createFamily()` committed its Firestore batch; `getFamilyId()` returned null and AppContext settled into guest mode permanently; fixed by replacing the one-shot `getDoc` read with `subscribeToFamilyId()` (`onSnapshot`), which fires again when the batch lands and switches to sync mode automatically
 - AuthScreen handleCreateParent: Firestore errors from `createFamily()` were shown as "Something went wrong" — auth and family-creation errors were in one try/catch; split into separate blocks so `createFamily` errors show `e.message` / `e.code` directly
+- Build error `@drawable/notification_icon` missing — expo-notifications injects this meta-data when `"icon"` is set in its plugin config; removed the `"icon"` property from `app.json` entirely so the drawable reference is never injected; `drawable-*/` is gitignored so PNG-copy approaches do not survive `prebuild --clean`
+- DadHomeScreen `getTodayRequests`: used `toISOString().split('T')[0]` for today's date — caused SGT pickups from the Telegram bot (which writes SGT dates) to never appear on the Today tab; fixed with `toLocalDateStr(new Date())`
 
 ## Session management
 - Each Claude.ai chat session has a context limit
