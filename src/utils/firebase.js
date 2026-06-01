@@ -223,11 +223,18 @@ export function subscribeToRequests(familyId, callback) {
     orderBy('createdAt', 'desc')
   );
   return onSnapshot(q, (snap) => {
-    const requests = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toMillis?.() || Date.now(),
-    }));
+    console.log(`[subscribeToRequests] snapshot: ${snap.docs.length} requests (${snap.docChanges().length} changes)`);
+    const requests = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        // Default fields that the Telegram bot omits (it uses Admin SDK and skips security rules)
+        status: data.status ?? 'pending',
+        fromId: data.fromId ?? '',
+        createdAt: data.createdAt?.toMillis?.() || Date.now(),
+      };
+    });
     callback(requests);
   });
 }

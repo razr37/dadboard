@@ -356,10 +356,10 @@ export function AppProvider({ children }) {
 
   // ── Derived helpers ────────────────────────────────────────────────────────
   function getTodayRequests() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr(new Date());
     return requests
       .filter(r => r.type === 'pickup' && r.date === today)
-      .sort((a, b) => a.time.localeCompare(b.time));
+      .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
   }
 
   function getPendingBuyRequests() {
