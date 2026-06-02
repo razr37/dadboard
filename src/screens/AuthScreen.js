@@ -1,16 +1,18 @@
 // src/screens/AuthScreen.js
-// Dadboard — shown when no Firebase user session exists.
+// Dadboard — intent-first auth flow.
 //
-// Three flows:
-//   1. "Start as Dad" — creates email account + new family (parent setup)
-//   2. "Join family" — signs in + joins existing family with invite code (kids/spouse)
-//   3. "Try without account" — anonymous auth, local-only (free tier, one device)
+// Screen 1 (welcome): three intent cards → routes to screen 2A / 2B / 2C
+//   2A  join    — invite code + name + role + email + password
+//   2B  parent  — name + email + password → creates family automatically
+//   2C  signin  — email + password
+//
+// initialInviteCode prop (deep-link / QR): skips welcome and pre-fills join.
 
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView,
-  Platform, ScrollView
+  Platform, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -20,38 +22,53 @@ import {
 import { colors, spacing, radius, typography } from '../utils/theme';
 import { ClearableInput } from '../components/UI';
 
-const TABS = ['parent', 'join', 'guest'];
-
 export default function AuthScreen({ initialInviteCode }) {
-  const [tab, setTab] = useState(initialInviteCode ? 'join' : 'parent');
+  const [screen, setScreen] = useState(initialInviteCode ? 'join' : 'welcome');
   const [loading, setLoading] = useState(false);
 
-  // Parent — create-account fields
-  const [parentName, setParentName] = useState('');
-  const [email, setEmail] = useState('');
-  const [createPassword, setCreatePassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
-
-  // Parent — sign-in fields (completely separate state; never shares password with create)
-  const [signInMode, setSignInMode] = useState(false);
-  const [signInPassword, setSignInPassword] = useState('');
-
-  // Join fields
+  // 2A — join
   const [joinName, setJoinName] = useState('');
   const [inviteCode, setInviteCode] = useState(initialInviteCode || '');
+  const [joinRole, setJoinRole] = useState('kid');
   const [joinEmail, setJoinEmail] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
 
-  // ── Create parent account ──────────────────────────────────────────────────
+  // 2B — parent / create
+  const [parentName, setParentName] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+
+  // 2C — sign in
+  const [signInEmail, setSignInEmail] = useState('');
+  const [signInPassword, setSignInPassword] = useState('');
+
+  // ── 2A: Join family ────────────────────────────────────────────────────────
+  async function handleJoin() {
+    if (!inviteCode.trim()) return Alert.alert('Missing info', "Enter the invite code from Dad's app.");
+    if (!joinName.trim())   return Alert.alert('Missing info', 'Enter your name.');
+    if (!joinEmail.trim())  return Alert.alert('Missing info', 'Enter your email address.');
+    if (joinPassword.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
+    setLoading(true);
+    try {
+      await createEmailAccount(joinEmail.trim(), joinPassword);
+      await joinFamily(inviteCode.trim(), joinName.trim(), joinRole);
+    } catch (e) {
+      Alert.alert('Join failed', friendlyError(e.code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── 2B: Create parent account ──────────────────────────────────────────────
   async function handleCreateParent() {
-    if (!parentName.trim()) return Alert.alert('Missing info', 'Please enter your name.');
-    if (!email.trim()) return Alert.alert('Missing info', 'Please enter your email address.');
+    if (!parentName.trim())  return Alert.alert('Missing info', 'Please enter your name.');
+    if (!parentEmail.trim()) return Alert.alert('Missing info', 'Please enter your email address.');
     if (createPassword.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
     setLoading(true);
     try {
-      // Step 1: create Firebase Auth account
       try {
-        await createEmailAccount(email.trim(), createPassword);
+        await createEmailAccount(parentEmail.trim(), createPassword);
       } catch (e) {
         if (e.code === 'auth/email-already-in-use') {
           Alert.alert(
@@ -62,8 +79,9 @@ export default function AuthScreen({ initialInviteCode }) {
               {
                 text: 'Sign in',
                 onPress: () => {
-                  setSignInPassword(''); // never carry over the create-account password
-                  setSignInMode(true);
+                  setSignInEmail(parentEmail.trim());
+                  setSignInPassword('');
+                  setScreen('signin');
                 },
               },
             ]
@@ -71,17 +89,15 @@ export default function AuthScreen({ initialInviteCode }) {
         } else {
           Alert.alert('Sign up failed', friendlyError(e.code));
         }
-        return; // auth failed — don't attempt family creation
+        return;
       }
-
-      // Step 2: write family + member + user docs to Firestore
       try {
         await createFamily(parentName.trim());
       } catch (e) {
         console.error('[AuthScreen] createFamily failed:', e.code, e.message);
         Alert.alert(
           'Family setup failed',
-          `Could not create family: ${e.message || e.code || String(e)}\n\nYour account was created. Please sign in again to retry.`
+          `Could not create family: ${e.message || e.code || String(e)}\n\nYour account was created. Please sign in to retry.`
         );
       }
     } finally {
@@ -89,12 +105,12 @@ export default function AuthScreen({ initialInviteCode }) {
     }
   }
 
-  // ── Sign in existing parent ────────────────────────────────────────────────
+  // ── 2C: Sign in ────────────────────────────────────────────────────────────
   async function handleSignIn() {
-    if (!email.trim() || !signInPassword) return Alert.alert('Missing info', 'Enter email and password.');
+    if (!signInEmail.trim() || !signInPassword) return Alert.alert('Missing info', 'Enter email and password.');
     setLoading(true);
     try {
-      await signInWithEmail(email.trim(), signInPassword);
+      await signInWithEmail(signInEmail.trim(), signInPassword);
     } catch (e) {
       Alert.alert('Sign in failed', friendlyError(e.code));
     } finally {
@@ -102,45 +118,22 @@ export default function AuthScreen({ initialInviteCode }) {
     }
   }
 
-  // ── Forgot password ────────────────────────────────────────────────────────
   async function handleForgotPassword() {
-    if (!email.trim()) {
-      Alert.alert('Enter email', 'Please enter your email address first.');
-      return;
-    }
+    if (!signInEmail.trim()) return Alert.alert('Enter email', 'Please enter your email address first.');
     try {
-      await sendPasswordReset(email.trim());
-      Alert.alert('Email sent', `Password reset link sent to ${email.trim()}.`);
+      await sendPasswordReset(signInEmail.trim());
+      Alert.alert('Email sent', `Password reset link sent to ${signInEmail.trim()}.`);
     } catch (e) {
       Alert.alert('Error', friendlyError(e.code));
     }
   }
 
-  // ── Join family (kid/spouse) ───────────────────────────────────────────────
-  async function handleJoin() {
-    if (!joinName.trim()) return Alert.alert('Missing info', 'Enter your name.');
-    if (!inviteCode.trim()) return Alert.alert('Missing info', 'Enter the invite code from Dad\'s app.');
-    if (!joinEmail.trim()) return Alert.alert('Missing info', 'Enter your email address.');
-    if (joinPassword.length < 8) return Alert.alert('Weak password', 'Password must be at least 8 characters.');
-    setLoading(true);
-    try {
-      await createEmailAccount(joinEmail.trim(), joinPassword);
-      // Determine next colorIndex based on existing members (simplified: use timestamp mod 5)
-      const colorIndex = Date.now() % 5;
-      await joinFamily(inviteCode.trim(), joinName.trim(), colorIndex);
-    } catch (e) {
-      Alert.alert('Join failed', friendlyError(e.code));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ── Guest / anonymous ─────────────────────────────────────────────────────
+  // ── Guest ──────────────────────────────────────────────────────────────────
   async function handleGuest() {
     setLoading(true);
     try {
       await signInAnonymously();
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Could not start a guest session. Please check your internet connection.');
     } finally {
       setLoading(false);
@@ -154,7 +147,6 @@ export default function AuthScreen({ initialInviteCode }) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
-        {/* Logo */}
         <View style={styles.logoBlock}>
           <View style={styles.logoIcon}>
             <Ionicons name="car-outline" size={32} color={colors.primary} />
@@ -163,23 +155,135 @@ export default function AuthScreen({ initialInviteCode }) {
           <Text style={styles.logoSub}>The family pickup command centre</Text>
         </View>
 
-        {/* Tab switcher */}
-        <View style={styles.tabs}>
-          <TabBtn label="I'm the Dad" icon="shield-outline" active={tab === 'parent'} onPress={() => setTab('parent')} />
-          <TabBtn label="Join family" icon="people-outline" active={tab === 'join'} onPress={() => setTab('join')} />
-          <TabBtn label="Try it free" icon="flash-outline" active={tab === 'guest'} onPress={() => setTab('guest')} />
-        </View>
+        {/* ── Screen 1: Welcome ── */}
+        {screen === 'welcome' && (
+          <View style={styles.cards}>
+            <IntentCard
+              icon="ticket-outline"
+              title="I have an invite code"
+              sub="Join your family's Dadboard"
+              onPress={() => setScreen('join')}
+            />
+            <IntentCard
+              icon="person-outline"
+              title="Set up as Dad / Parent"
+              sub="Create a new family account"
+              onPress={() => setScreen('parent')}
+            />
+            <IntentCard
+              icon="key-outline"
+              title="Sign in"
+              sub="Already have an account"
+              onPress={() => setScreen('signin')}
+            />
+            <TouchableOpacity style={styles.guestLink} onPress={handleGuest} disabled={loading}>
+              {loading
+                ? <ActivityIndicator size="small" color={colors.textTertiary} />
+                : <Text style={styles.guestLinkText}>Try without account →</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {/* ── Parent tab ── */}
-        {tab === 'parent' && !signInMode && (
+        {/* ── Screen 2A: Join family ── */}
+        {screen === 'join' && (
           <View style={styles.form}>
-            <Text style={styles.formTitle}>Set up your family</Text>
-            <Text style={styles.formSub}>Create your account. Your kids join using your invite code.</Text>
+            <BackBtn onPress={() => setScreen('welcome')} />
+            <Text style={styles.formTitle}>Join your family</Text>
+
+            {initialInviteCode ? (
+              <View style={styles.detectedBadge}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                <Text style={styles.detectedBadgeText}>Invite code: {initialInviteCode}</Text>
+              </View>
+            ) : (
+              <Field label="Invite code from Dad">
+                <ClearableInput
+                  style={[styles.input, styles.codeInput]}
+                  placeholder="e.g. X7K2M9PQ"
+                  placeholderTextColor={colors.textTertiary}
+                  value={inviteCode}
+                  onChangeText={t => setInviteCode(t.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </Field>
+            )}
 
             <Field label="Your name">
               <ClearableInput
                 style={styles.input}
-                placeholder="e.g. Dad, Marcus..."
+                placeholder="e.g. Ethan, Mum…"
+                placeholderTextColor={colors.textTertiary}
+                value={joinName}
+                onChangeText={setJoinName}
+                autoCapitalize="words"
+                textContentType="name"
+                autoComplete="name"
+              />
+            </Field>
+
+            <Field label="I am a…">
+              <View style={styles.roleRow}>
+                {ROLES.map(opt => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.roleBtn, joinRole === opt.value && styles.roleBtnActive]}
+                    onPress={() => setJoinRole(opt.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.roleBtnText, joinRole === opt.value && styles.roleBtnTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Field>
+
+            <Field label="Your email">
+              <ClearableInput
+                style={styles.input}
+                placeholder="you@email.com"
+                placeholderTextColor={colors.textTertiary}
+                value={joinEmail}
+                onChangeText={setJoinEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="emailAddress"
+                autoComplete="email"
+              />
+            </Field>
+
+            <Field label="Password (min 8 characters)">
+              <TextInput
+                style={styles.input}
+                placeholder="Choose a password"
+                placeholderTextColor={colors.textTertiary}
+                value={joinPassword}
+                onChangeText={setJoinPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                textContentType="newPassword"
+                autoComplete="new-password"
+              />
+            </Field>
+
+            <PrimaryBtn label="Join family" onPress={handleJoin} loading={loading} />
+          </View>
+        )}
+
+        {/* ── Screen 2B: Set up as Dad / Parent ── */}
+        {screen === 'parent' && (
+          <View style={styles.form}>
+            <BackBtn onPress={() => setScreen('welcome')} />
+            <Text style={styles.formTitle}>Set up as Dad / Parent</Text>
+            <Text style={styles.formSub}>Your kids join later using an invite code you share from the app.</Text>
+
+            <Field label="Your name">
+              <ClearableInput
+                style={styles.input}
+                placeholder="e.g. Dad, Marcus…"
                 placeholderTextColor={colors.textTertiary}
                 value={parentName}
                 onChangeText={setParentName}
@@ -188,13 +292,14 @@ export default function AuthScreen({ initialInviteCode }) {
                 autoComplete="name"
               />
             </Field>
+
             <Field label="Email address">
               <ClearableInput
                 style={styles.input}
                 placeholder="you@email.com"
                 placeholderTextColor={colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
+                value={parentEmail}
+                onChangeText={setParentEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -202,6 +307,7 @@ export default function AuthScreen({ initialInviteCode }) {
                 autoComplete="email"
               />
             </Field>
+
             <Field label="Password (min 8 characters)">
               <View style={styles.passRow}>
                 <TextInput
@@ -223,15 +329,19 @@ export default function AuthScreen({ initialInviteCode }) {
 
             <PrimaryBtn label="Create family account" onPress={handleCreateParent} loading={loading} />
 
-            <TouchableOpacity style={styles.secondaryLink} onPress={() => { setSignInPassword(''); setSignInMode(true); }}>
+            <TouchableOpacity
+              style={styles.secondaryLink}
+              onPress={() => { setSignInEmail(parentEmail); setSignInPassword(''); setScreen('signin'); }}
+            >
               <Text style={styles.secondaryLinkText}>Already have an account? Sign in →</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* ── Sign-in mode (inside parent tab) ── */}
-        {tab === 'parent' && signInMode && (
+        {/* ── Screen 2C: Sign in ── */}
+        {screen === 'signin' && (
           <View style={styles.form}>
+            <BackBtn onPress={() => setScreen('welcome')} />
             <Text style={styles.formTitle}>Welcome back</Text>
             <Text style={styles.formSub}>Sign in to your Dadboard account.</Text>
 
@@ -240,8 +350,8 @@ export default function AuthScreen({ initialInviteCode }) {
                 style={styles.input}
                 placeholder="you@email.com"
                 placeholderTextColor={colors.textTertiary}
-                value={email}
-                onChangeText={setEmail}
+                value={signInEmail}
+                onChangeText={setSignInEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -249,6 +359,7 @@ export default function AuthScreen({ initialInviteCode }) {
                 autoComplete="email"
               />
             </Field>
+
             <Field label="Password">
               <TextInput
                 style={styles.input}
@@ -268,109 +379,6 @@ export default function AuthScreen({ initialInviteCode }) {
             <TouchableOpacity style={styles.secondaryLink} onPress={handleForgotPassword}>
               <Text style={styles.secondaryLinkText}>Forgot password? Send reset email →</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.secondaryLink} onPress={() => setSignInMode(false)}>
-              <Text style={[styles.secondaryLinkText, { color: colors.textTertiary }]}>← Create a new account</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── Join tab ── */}
-        {tab === 'join' && (
-          <View style={styles.form}>
-            <Text style={styles.formTitle}>Join your family</Text>
-            {initialInviteCode ? (
-              <>
-                <Text style={styles.formSub}>Invite link detected. Create your account to join.</Text>
-                <View style={styles.detectedCodeBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-                  <Text style={styles.detectedCodeText}>Invite code: {initialInviteCode}</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.formSub}>Ask Dad for the invite link or code (Settings → Invite).</Text>
-                <Field label="Invite code from Dad">
-                  <ClearableInput
-                    style={[styles.input, styles.codeInput]}
-                    placeholder="Paste code here"
-                    placeholderTextColor={colors.textTertiary}
-                    value={inviteCode}
-                    onChangeText={setInviteCode}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </Field>
-              </>
-            )}
-
-            <Field label="Your name">
-              <ClearableInput
-                style={styles.input}
-                placeholder="e.g. Ethan, Mum..."
-                placeholderTextColor={colors.textTertiary}
-                value={joinName}
-                onChangeText={setJoinName}
-                autoCapitalize="words"
-                textContentType="name"
-                autoComplete="name"
-              />
-            </Field>
-            <Field label="Your email">
-              <ClearableInput
-                style={styles.input}
-                placeholder="you@email.com"
-                placeholderTextColor={colors.textTertiary}
-                value={joinEmail}
-                onChangeText={setJoinEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                textContentType="emailAddress"
-                autoComplete="email"
-              />
-            </Field>
-            <Field label="Password (min 8 characters)">
-              <TextInput
-                style={styles.input}
-                placeholder="Choose a password"
-                placeholderTextColor={colors.textTertiary}
-                value={joinPassword}
-                onChangeText={setJoinPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                textContentType="newPassword"
-                autoComplete="new-password"
-              />
-            </Field>
-
-            <PrimaryBtn label="Join family" onPress={handleJoin} loading={loading} />
-          </View>
-        )}
-
-        {/* ── Guest tab ── */}
-        {tab === 'guest' && (
-          <View style={styles.form}>
-            <Text style={styles.formTitle}>Try Dadboard free</Text>
-            <Text style={styles.formSub}>
-              No account needed. Your data stays on this device only.{'\n\n'}
-              You can upgrade to a full account later to sync across devices and invite family members.
-            </Text>
-
-            <View style={styles.guestFeatures}>
-              <GuestFeatureRow icon="checkmark-circle-outline" text="Today's pickups dashboard" available />
-              <GuestFeatureRow icon="checkmark-circle-outline" text="Shopping list" available />
-              <GuestFeatureRow icon="checkmark-circle-outline" text="Family profiles (this device)" available />
-              <GuestFeatureRow icon="close-circle-outline" text="Multi-device family sync" available={false} />
-              <GuestFeatureRow icon="close-circle-outline" text="Kids on separate phones" available={false} />
-              <GuestFeatureRow icon="close-circle-outline" text="Google Calendar export" available={false} />
-            </View>
-
-            <PrimaryBtn label="Start without account" onPress={handleGuest} loading={loading} color={colors.textSecondary} />
-
-            <TouchableOpacity style={styles.secondaryLink} onPress={() => setTab('parent')}>
-              <Text style={styles.secondaryLinkText}>Create a full account instead →</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -383,11 +391,36 @@ export default function AuthScreen({ initialInviteCode }) {
   );
 }
 
-function TabBtn({ label, icon, active, onPress }) {
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const ROLES = [
+  { value: 'kid',    label: 'Kid' },
+  { value: 'spouse', label: 'Spouse' },
+  { value: 'adult',  label: 'Other Adult' },
+];
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function IntentCard({ icon, title, sub, onPress }) {
   return (
-    <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
-      <Ionicons name={icon} size={16} color={active ? colors.primary : colors.textTertiary} />
-      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+    <TouchableOpacity style={styles.intentCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.intentIconWrap}>
+        <Ionicons name={icon} size={24} color={colors.primary} />
+      </View>
+      <View style={styles.intentBody}>
+        <Text style={styles.intentTitle}>{title}</Text>
+        <Text style={styles.intentSub}>{sub}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+}
+
+function BackBtn({ onPress }) {
+  return (
+    <TouchableOpacity style={styles.backBtn} onPress={onPress}>
+      <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+      <Text style={styles.backBtnText}>Back</Text>
     </TouchableOpacity>
   );
 }
@@ -401,10 +434,10 @@ function Field({ label, children }) {
   );
 }
 
-function PrimaryBtn({ label, onPress, loading, color }) {
+function PrimaryBtn({ label, onPress, loading }) {
   return (
     <TouchableOpacity
-      style={[styles.primaryBtn, { backgroundColor: color || colors.primary }, loading && { opacity: 0.7 }]}
+      style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
       onPress={onPress}
       disabled={loading}
       activeOpacity={0.85}
@@ -417,35 +450,27 @@ function PrimaryBtn({ label, onPress, loading, color }) {
   );
 }
 
-function GuestFeatureRow({ icon, text, available }) {
-  return (
-    <View style={styles.guestRow}>
-      <Ionicons
-        name={icon}
-        size={18}
-        color={available ? colors.success : colors.textTertiary}
-      />
-      <Text style={[styles.guestRowText, !available && { color: colors.textTertiary }]}>{text}</Text>
-    </View>
-  );
-}
-
 function friendlyError(code) {
   const map = {
-    'auth/email-already-in-use': 'That email is already registered. Try signing in instead.',
-    'auth/invalid-email': 'Please enter a valid email address.',
-    'auth/wrong-password': 'Incorrect password. Please try again.',
-    'auth/user-not-found': 'No account found with that email.',
-    'auth/weak-password': 'Password must be at least 8 characters.',
-    'auth/network-request-failed': 'No internet connection. Please try again.',
-    'auth/too-many-requests': 'Too many attempts. Please wait a few minutes.',
+    'auth/email-already-in-use':  'That email is already registered. Try signing in instead.',
+    'auth/invalid-email':         'Please enter a valid email address.',
+    'auth/invalid-credential':    'Incorrect email or password.',
+    'auth/wrong-password':        'Incorrect password. Please try again.',
+    'auth/user-not-found':        'No account found with that email.',
+    'auth/weak-password':         'Password must be at least 8 characters.',
+    'auth/network-request-failed':'No internet connection. Please try again.',
+    'auth/too-many-requests':     'Too many attempts. Please wait a few minutes.',
   };
   return map[code] || 'Something went wrong. Please try again.';
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: 40 },
+
+  // Logo
   logoBlock: { alignItems: 'center', paddingTop: 64, paddingBottom: spacing.xl },
   logoIcon: {
     width: 72, height: 72, borderRadius: 20,
@@ -454,50 +479,83 @@ const styles = StyleSheet.create({
   },
   logoText: { fontSize: 32, fontWeight: '800', color: colors.primary, letterSpacing: -1 },
   logoSub: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 4 },
-  tabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
-  tab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 5, padding: spacing.sm, borderRadius: radius.md,
-    backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border,
+
+  // Intent cards
+  cards: { gap: spacing.md },
+  intentCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    backgroundColor: colors.bgCard, borderRadius: radius.lg,
+    padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
   },
-  tabActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
-  tabLabel: { fontSize: 11, fontWeight: '600', color: colors.textTertiary },
-  tabLabelActive: { color: colors.primaryDark },
+  intentIconWrap: {
+    width: 48, height: 48, borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  intentBody: { flex: 1 },
+  intentTitle: { ...typography.body, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  intentSub: { ...typography.caption, color: colors.textSecondary },
+
+  // Guest link
+  guestLink: { alignItems: 'center', paddingVertical: spacing.md, marginTop: spacing.sm },
+  guestLinkText: { ...typography.bodySmall, color: colors.textTertiary },
+
+  // Back button
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    alignSelf: 'flex-start', marginBottom: spacing.lg,
+  },
+  backBtnText: { ...typography.bodySmall, color: colors.textSecondary },
+
+  // Forms
   form: { gap: 0 },
   formTitle: { ...typography.h3, color: colors.textPrimary, marginBottom: 4 },
   formSub: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 20 },
-  detectedCodeBadge: {
+
+  // Detected invite code badge
+  detectedBadge: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.successLight || '#D1FAE5', borderRadius: radius.md,
+    backgroundColor: colors.successLight, borderRadius: radius.md,
     padding: spacing.sm, marginBottom: spacing.lg,
   },
-  detectedCodeText: { ...typography.bodySmall, color: colors.success, fontWeight: '600', flex: 1 },
+  detectedBadgeText: { ...typography.bodySmall, color: colors.success, fontWeight: '600', flex: 1 },
+
+  // Fields
   field: { marginBottom: spacing.lg },
   fieldLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
   input: {
     backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.md, padding: spacing.md, fontSize: 15, color: colors.textPrimary,
   },
+  codeInput: { fontFamily: 'monospace', letterSpacing: 2 },
   passRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   eyeBtn: {
     width: 44, height: 48, alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
   },
-  codeInput: { fontFamily: 'monospace', letterSpacing: 1 },
+
+  // Role selector
+  roleRow: { flexDirection: 'row', gap: spacing.sm },
+  roleBtn: {
+    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md,
+    alignItems: 'center', backgroundColor: colors.bgCard,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  roleBtnActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  roleBtnText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  roleBtnTextActive: { color: colors.primaryDark },
+
+  // Buttons
   primaryBtn: {
-    paddingVertical: 14, borderRadius: radius.md,
-    alignItems: 'center', marginTop: spacing.sm,
+    backgroundColor: colors.primary, paddingVertical: 14,
+    borderRadius: radius.md, alignItems: 'center', marginTop: spacing.sm,
   },
   primaryBtnText: { color: colors.white, fontSize: 15, fontWeight: '700' },
   secondaryLink: { alignItems: 'center', padding: spacing.md },
   secondaryLinkText: { ...typography.bodySmall, color: colors.info },
-  guestFeatures: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, gap: spacing.sm,
-    borderWidth: 1, borderColor: colors.border, marginBottom: spacing.lg,
-  },
-  guestRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  guestRowText: { ...typography.bodySmall, color: colors.textPrimary },
+
   legalText: {
     ...typography.caption, color: colors.textTertiary,
     textAlign: 'center', marginTop: spacing.xl, lineHeight: 17,

@@ -10,8 +10,9 @@ import { useApp } from '../context/AppContext';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { ClearableInput } from '../components/UI';
 import { revokeConsent } from './ConsentScreen';
+import { signOut } from 'firebase/auth';
 import {
-  sendPasswordReset, deleteAllFamilyData, signOut,
+  sendPasswordReset, deleteAllFamilyData, auth,
 } from '../utils/firebase';
 
 const APP_VERSION = '1.0.0';
@@ -116,7 +117,7 @@ export default function SettingsScreen({ navigation }) {
     try {
       await AsyncStorage.clear();
       await revokeConsent();
-      await signOut();
+      await signOut(auth);
     } catch (e) {
       console.error('Local data clear failed:', e.message, e.code);
       Alert.alert(
@@ -124,6 +125,29 @@ export default function SettingsScreen({ navigation }) {
         `Could not clear local data.\n\nError: ${e.message}\n\nEmail dadboard.privacy@gmail.com for manual deletion.`
       );
     }
+  }
+
+  // ── Sign out ───────────────────────────────────────────────────────────────
+  function handleSignOut() {
+    Alert.alert(
+      'Sign out',
+      'Sign out of your Dadboard account on this device?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              await AsyncStorage.clear();
+            } catch (e) {
+              console.error('Sign out failed:', e.message);
+            }
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -208,6 +232,19 @@ export default function SettingsScreen({ navigation }) {
             label="Data & Privacy"
             desc="Consent, data export, PDPA / GDPR rights"
             onPress={() => navigation.navigate('PrivacySettings')}
+          />
+        </View>
+
+        {/* ── Sign out ── */}
+        <SectionLabel text="Sign out" />
+
+        <View style={[styles.card, shadow.sm]}>
+          <SettingsRow
+            icon="log-out-outline"
+            label="Sign out"
+            desc="Sign out of your account on this device"
+            onPress={handleSignOut}
+            destructive
           />
         </View>
 

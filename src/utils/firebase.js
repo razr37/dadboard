@@ -154,26 +154,29 @@ export function subscribeToFamilyId(uid, callback) {
   );
 }
 
-export async function joinFamily(familyId, memberName, colorIndex) {
+export async function joinFamily(familyId, memberName, role = 'kid') {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
   const familySnap = await getDoc(doc(db, 'families', familyId));
   if (!familySnap.exists()) throw new Error('Family not found. Check the invite code.');
 
+  // Adults (spouse/adult) use the parent orange colour; kids get a rotating colour.
+  const colorIndex = (role === 'spouse' || role === 'adult') ? -1 : (Date.now() % 5);
+
   const batch = writeBatch(db);
 
   batch.set(doc(db, 'families', familyId, 'members', user.uid), {
     uid: user.uid,
     name: memberName,
-    role: 'kid',
+    role,
     colorIndex,
     createdAt: serverTimestamp(),
   });
 
   batch.set(doc(db, 'users', user.uid), {
     familyId,
-    role: 'kid',
+    role,
     name: memberName,
     updatedAt: serverTimestamp(),
   });

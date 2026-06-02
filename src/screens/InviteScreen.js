@@ -80,10 +80,7 @@ export default function InviteScreen({ navigation }) {
     return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]} at ${hour12}:${mins}${ampm}`;
   }
 
-  const appMessage =
-    `Join my Dadboard family! 🚗\n\n` +
-    `Download the app: ${PLAY_STORE_URL}\n\n` +
-    `Then tap "Join family" and enter code: ${familyId}`;
+  const appMessage = `Install Dadboard from ${PLAY_STORE_URL} and use family code: ${familyId} to join`;
 
   async function handleWhatsApp(message) {
     const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
