@@ -147,7 +147,7 @@ InviteScreen shows **two invite paths**:
 
 **Deep link receiving** (App.js `Root`): `Linking.getInitialURL()` handles cold-start opens; `Linking.addEventListener('url')` handles foreground opens. `parseInviteCode(url)` extracts the `?code=` param from `https://dadboard.app/join?code=FAMILYID`. `initialInviteCode` state flows through `Root` → `AppNavigator` → both `AuthScreen` instances.
 
-**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: auto-switches to `'join'` tab, pre-fills `inviteCode` state, hides the code field (replaced by a green "detected" badge), and shows 3 fields (Name / Email / Password) instead of 4.
+**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: navigates directly to `'join'` screen, pre-fills `inviteCode` state, and shows a green "detected" badge instead of the code input. User selects role (Kid / Spouse / Other Adult) then submits; `joinFamily(code, name, role)` in `firebase.js` derives `colorIndex` internally (`-1` for adults, `Date.now() % 5` for kids).
 
 **Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live.
 
@@ -163,22 +163,24 @@ Separate Node.js/Express project (not inside this repo). Receives Telegram webho
 
 **Date parsing**: `parser.js` builds its system prompt dynamically via `buildSystemPrompt()`, injecting today's date in SGT (`Asia/Singapore` timezone) on every call. This is critical — a static prompt causes the model to use its training cutoff date for relative terms like "tomorrow".
 
-### AuthScreen.js — sign-in vs create-account state
+### AuthScreen.js — intent-first flow
 
-The "I'm the Dad" tab has two modes controlled by `signInMode` (boolean state):
-- **Create mode** (default): name + email + `createPassword`; "Create family account" button
-- **Sign-in mode**: email (pre-filled) + `signInPassword` (separate state, never shares value with `createPassword`); "Sign in" button; "Forgot password?" link
+Uses a `screen` state (`'welcome' | 'join' | 'parent' | 'signin'`). The welcome screen shows three `IntentCard` components; each leads to its own isolated form.
 
-**`auth/email-already-in-use`**: caught specifically in `handleCreateParent` — shows an Alert with "Sign in" / "Cancel". "Sign in" sets `signInPassword = ''` then `signInMode = true`. Email stays pre-filled. The create password is **never** copied to `signInPassword`.
+- **`'welcome'`** — three intent cards: "I have an invite code" → `'join'`; "Set up as Dad / Parent" → `'parent'`; "Sign in" → `'signin'`. Small "Try without account →" link at the bottom calls `signInAnonymously`.
+- **`'join'`** — invite code + name + role chips (Kid / Spouse / Other Adult) + email + password → `createEmailAccount` then `joinFamily(code, name, role)`. If `initialInviteCode` prop is set, skips to this screen automatically and shows a green badge instead of the code input.
+- **`'parent'`** — name + email + password (show/hide toggle) → `createEmailAccount` then `createFamily`. `auth/email-already-in-use` navigates to `'signin'` with email pre-filled; create password is **never** copied to the sign-in password field.
+- **`'signin'`** — email + password → `signInWithEmail`. "Forgot password?" link calls `sendPasswordReset`. Back button on all sub-screens returns to `'welcome'`.
 
-**Forgot password** (`handleForgotPassword`): validates email is non-empty, calls `sendPasswordReset(email)`, shows confirmation. Available in sign-in mode only.
+Each screen has fully independent email/password state — no shared state between create, join, and sign-in forms.
 
 ### SettingsScreen.js
 
-Reached via the gear icon (⚙) in DadHomeScreen header. Registered as `presentation: 'modal'` in the root stack. Four sections:
+Reached via the gear icon (⚙) in DadHomeScreen header. Registered as `presentation: 'modal'` in the root stack. Five sections:
 - **Account**: Edit profile name (inline `TextInput` toggle → `updateCurrentUserName`); Change password (`sendPasswordReset` → Firebase reset email)
 - **Family**: Invite family member → `InviteScreen`; Manage members → `SwitchUserScreen`
 - **Privacy**: Data & Privacy → `PrivacySettingsScreen`
+- **Sign out**: `handleSignOut` — single-confirm alert → `signOut(auth)` then `AsyncStorage.clear()`. No explicit navigation: `onAuthStateChanged(null)` in `Root` re-renders to `AuthScreen` automatically. Uses `import { signOut } from 'firebase/auth'` and `import { auth } from '../utils/firebase'` directly (not the wrapper).
 - **Account removal**: Delete account (double-confirm, same `performDelete` flow as `PrivacySettingsScreen`)
 
 `firebase.js` exports supporting this: `sendPasswordReset(email)`, `updateMemberDoc(familyId, uid, data)`.
@@ -338,7 +340,7 @@ Run all 5 checks, fix any issues, THEN build.
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
 - SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
 - Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
-- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; split into `createPassword` (create form) and `signInPassword` (sign-in form); sign-in mode activated via `signInMode` boolean
+- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; resolved by giving each screen (`'parent'`, `'join'`, `'signin'`) fully independent email/password state with no cross-screen sharing
 - ConsentScreen: "I agree" tapped but nothing happened — `onAuthStateChanged` token refresh fired during `recordConsent`, called `hasConsented()` before write completed, got `false`, overwrote `consentGiven=true`; fixed with `justConsented` ref in Root
 - KidHomeScreen: crash on switching to kid profile — `currentUser.colorIndex` could be `undefined` (new kid) making array index `NaN`; fixed with `Math.max(0, currentUser?.colorIndex ?? 0) % 5`
 - PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
