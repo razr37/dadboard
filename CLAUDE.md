@@ -295,6 +295,32 @@ ls assets/feature-graphic.png && echo "✓ feature-graphic.png OK" || echo "✗ 
 cat node_modules/firebase/package.json | grep '"version"' | head -1
 ```
 
+## Before every production build checklist
+Run these checks BEFORE building to avoid wasted build time:
+
+1. Version code must be higher than any previously submitted build:
+   `grep "versionCode" app.json`
+   - Increment by 1 each build (1 → 2 → 3 etc.)
+   - Play Store rejects duplicate version codes with no exceptions
+
+2. targetSdkVersion must meet current Play Store minimum:
+   `grep "targetSdkVersion" android/build.gradle`
+   - As of June 2026: minimum is 35
+   - Check play.google.com/console for current requirement before building
+
+3. google-services.json must exist:
+   `ls android/app/google-services.json`
+
+4. JS bundle must be clean before building:
+   `npx expo export --platform android 2>&1 | head -5`
+   - Must show "Android Bundled" with no errors
+
+5. Git must be clean (all changes committed):
+   `git status`
+   - Must show "nothing to commit"
+
+Run all 5 checks, fix any issues, THEN build.
+
 ## Build pipeline rules (learned the hard way)
 - ALWAYS run `npx expo install --fix` after any package change
 - ALWAYS run `npx expo prebuild --platform android --clean` after package changes
