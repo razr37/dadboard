@@ -142,14 +142,23 @@ export async function getFamilyId() {
 // Real-time listener for /users/{uid}.familyId.
 // Fires immediately with current value, then again on any change.
 // Handles the race where createFamily() commits after onAuthStateChanged fires.
-// On permission-denied (anonymous user) calls callback(null) without throwing.
+// Also handles magic-link joins: passes memberId (the synthetic doc ID) so
+// AppContext can select the right currentUser profile.
+// callback(familyId, memberId) — both null if no user doc or on error.
 export function subscribeToFamilyId(uid, callback) {
   return onSnapshot(
     doc(db, 'users', uid),
-    (snap) => callback(snap.exists() ? (snap.data().familyId || null) : null),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        callback(data.familyId || null, data.memberId || null);
+      } else {
+        callback(null, null);
+      }
+    },
     (err) => {
       console.warn('[subscribeToFamilyId] error:', err.code);
-      callback(null);
+      callback(null, null);
     }
   );
 }
@@ -206,6 +215,58 @@ export async function generateTelegramInvite(familyId, uid) {
   });
 
   return token;
+}
+
+// ─── Member magic-link invites ────────────────────────────────────────────────
+// Separate from Telegram tokens: these link a specific family member slot to a
+// device. Dad generates one per member; the member taps it to auto-authenticate.
+
+export async function generateMemberInvite(familyId, memberId, role, name, colorIndex) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const token = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 48);
+  await setDoc(doc(db, 'invites', token), {
+    familyId,
+    memberId,
+    role,
+    name,
+    colorIndex,
+    createdBy: auth.currentUser?.uid || '',
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(expiresAt),
+    used: false,
+  });
+  return token;
+}
+
+// Validates token, creates an anonymous Firebase Auth account, writes the
+// /users/{uid} doc so AppContext can find the family, and marks the invite used.
+// Throws with a user-readable message on any validation failure.
+export async function redeemMemberInvite(token) {
+  const inviteSnap = await getDoc(doc(db, 'invites', token));
+  if (!inviteSnap.exists()) throw new Error('This invite link is invalid. Ask Dad for a new one.');
+  const invite = inviteSnap.data();
+  if (invite.used) throw new Error('This invite link has already been used. Ask Dad for a new one.');
+  if (invite.expiresAt.toDate() < new Date()) throw new Error('This invite link has expired. Ask Dad for a new one.');
+
+  const { user } = await fbSignInAnonymously(auth);
+
+  await setDoc(doc(db, 'users', user.uid), {
+    familyId: invite.familyId,
+    role: invite.role,
+    name: invite.name,
+    memberId: invite.memberId,
+    updatedAt: serverTimestamp(),
+  });
+
+  await updateDoc(doc(db, 'invites', token), {
+    used: true,
+    usedBy: user.uid,
+    usedAt: serverTimestamp(),
+  });
+
+  return invite;
 }
 
 // ─── Members ──────────────────────────────────────────────────────────────────

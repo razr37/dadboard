@@ -1,10 +1,13 @@
 // src/screens/SwitchUserScreen.js
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { generateMemberInvite } from '../utils/firebase';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, ClearableInput } from '../components/UI';
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.dadboard.app';
 
 const ROLE_OPTIONS = [
   { value: 'kid',    label: 'Kid',              desc: 'Simplified view · can submit requests' },
@@ -22,7 +25,7 @@ function roleLabel(role) {
 }
 
 export default function SwitchUserScreen({ navigation }) {
-  const { family, currentUser, switchUser, addFamilyMember } = useApp();
+  const { family, currentUser, switchUser, addFamilyMember, familyId, isSynced } = useApp();
   const [newName, setNewName] = useState('');
   const [selectedRole, setSelectedRole] = useState('kid');
   const [adding, setAdding] = useState(false);
@@ -43,22 +46,66 @@ export default function SwitchUserScreen({ navigation }) {
     const name = newName.trim();
     if (!name) return;
     try {
-      await addFamilyMember(name, selectedRole);
+      const member = await addFamilyMember(name, selectedRole);
       setNewName('');
       setSelectedRole('kid');
       setAdding(false);
-      if (navigation.canGoBack()) navigation.goBack();
+
+      // Offer to send a magic-link invite (synced families only)
+      if (member && isSynced && familyId) {
+        promptInvite(member);
+      } else {
+        if (navigation.canGoBack()) navigation.goBack();
+      }
     } catch (e) {
       const isPermission = e?.code === 'permission-denied'
         || e?.message?.includes('Missing or insufficient permissions');
       if (isPermission) {
-        Alert.alert(
-          'Permission denied',
-          'Please sign in to add family members, or use guest mode for local-only access.'
-        );
+        Alert.alert('Permission denied', 'Only parents can add family members.');
       } else {
         Alert.alert('Error', `Could not add family member.\n\n${e.message}`);
       }
+    }
+  }
+
+  async function promptInvite(member) {
+    try {
+      const token = await generateMemberInvite(
+        familyId, member.id, member.role, member.name, member.colorIndex
+      );
+      const deepLink = `https://dadboard.app/join?invite=${token}`;
+      const waMessage =
+        `${member.name} has been added to your Dadboard family! 🎉\n\n` +
+        `Install the app: ${PLAY_STORE_URL}\n\n` +
+        `Then tap this link to join: ${deepLink}\n\n(Link expires in 48 hours)`;
+
+      Alert.alert(
+        `${member.name} added!`,
+        'Send them an invite to join from their own phone?',
+        [
+          {
+            text: 'Send via WhatsApp',
+            onPress: async () => {
+              const url = `whatsapp://send?text=${encodeURIComponent(waMessage)}`;
+              const canOpen = await Linking.canOpenURL(url);
+              if (canOpen) {
+                Linking.openURL(url);
+              } else {
+                Alert.alert('WhatsApp not found', `Share this link with ${member.name}:\n\n${deepLink}`);
+              }
+              if (navigation.canGoBack()) navigation.goBack();
+            },
+          },
+          {
+            text: 'Do it later',
+            style: 'cancel',
+            onPress: () => { if (navigation.canGoBack()) navigation.goBack(); },
+          },
+        ]
+      );
+    } catch {
+      // Token generation failed — just navigate back
+      if (navigation.canGoBack()) navigation.goBack();
     }
   }
 

@@ -61,7 +61,11 @@ service cloud.firestore {
 
     // ── User profiles ─────────────────────────────────────────────────────────
     match /users/{userId} {
+      // Non-anonymous users have full access to their own doc.
       allow read, write: if isOwner(userId);
+      // Anonymous users joining via magic link must create their initial user doc
+      // (linking them to a family + member). Create-only; they cannot update/delete.
+      allow create: if request.auth != null && request.auth.uid == userId;
     }
 
     // ── Families ──────────────────────────────────────────────────────────────

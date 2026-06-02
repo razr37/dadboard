@@ -96,11 +96,11 @@ export function AppProvider({ children }) {
       // commits its batch after this callback fires (new-account race condition).
       // On permission-denied (anonymous users) it calls back with null.
       let firstRead = true;
-      unsubscribeUserDoc.current = subscribeToFamilyId(user.uid, async (fid) => {
+      unsubscribeUserDoc.current = subscribeToFamilyId(user.uid, async (fid, memberId) => {
         if (fid) {
           setFamilyId(fid);
           setIsSynced(true);
-          attachFirestoreListeners(fid);
+          attachFirestoreListeners(fid, memberId);
           setLoaded(true);
         } else if (firstRead) {
           // No family on first read — load local fallback (guest / new account)
@@ -118,7 +118,7 @@ export function AppProvider({ children }) {
   }, []);
 
   // ── Firestore real-time listeners ──────────────────────────────────────────
-  function attachFirestoreListeners(fid) {
+  function attachFirestoreListeners(fid, memberId) {
     // Unsubscribe any previous listeners
     unsubscribeFamily.current?.();
     unsubscribeMembers.current?.();
@@ -131,8 +131,13 @@ export function AppProvider({ children }) {
 
     unsubscribeMembers.current = subscribeToMembers(fid, (members) => {
       setFamily(members);
-      // Restore currentUser from updated members
       setCurrentUser(prev => {
+        // Magic-link join: memberId from /users/{uid} points to the member doc
+        // Dad created, so we land directly on the right kid/spouse profile.
+        if (memberId) {
+          const target = members.find(m => m.id === memberId || m.uid === memberId);
+          if (target) return target;
+        }
         const updated = members.find(m => m.id === prev?.id || m.uid === prev?.id);
         return updated || members.find(m => m.role === 'parent') || members[0];
       });
@@ -294,7 +299,8 @@ export function AppProvider({ children }) {
       ? family.filter(f => f.role === 'kid').length % 5
       : -1;
     if (isSynced && familyId) {
-      await addKidMember(familyId, name, colorIndex, role);
+      const id = await addKidMember(familyId, name, colorIndex, role);
+      return { id, name, role, colorIndex };
     } else {
       const member = { id: uuid.v4(), name, role, colorIndex };
       await saveLocalFamily([...family, member]);

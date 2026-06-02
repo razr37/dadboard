@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, Linking } from 'react-native';
+import { View, ActivityIndicator, Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 
@@ -24,7 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppProvider, useApp } from './src/context/AppContext';
 import { colors } from './src/utils/theme';
-import { onAuthStateChanged } from './src/utils/firebase';
+import { onAuthStateChanged, redeemMemberInvite, auth } from './src/utils/firebase';
 
 import AuthScreen from './src/screens/AuthScreen';
 import ConsentScreen from './src/screens/ConsentScreen';
@@ -84,7 +84,7 @@ function KidMain() {
   );
 }
 
-function AppNavigator({ initialInviteCode }) {
+function AppNavigator() {
   const { currentUser, loaded } = useApp();
 
   if (!loaded) {
@@ -109,9 +109,7 @@ function AppNavigator({ initialInviteCode }) {
       <Stack.Screen name="SwitchUser" component={SwitchUserScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Invite" component={InviteScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} options={{ presentation: 'modal' }} />
-      <Stack.Screen name="Auth" options={{ presentation: 'modal' }}>
-        {() => <AuthScreen initialInviteCode={initialInviteCode} />}
-      </Stack.Screen>
+      <Stack.Screen name="Auth" component={AuthScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="ProUpgrade" component={ProUpgradeScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
@@ -120,11 +118,11 @@ function AppNavigator({ initialInviteCode }) {
   );
 }
 
-// Extract invite code from a dadboard.app/join?code=... URL.
-function parseInviteCode(url) {
+// Extract member magic-link token from https://dadboard.app/join?invite=TOKEN
+function parseMemberToken(url) {
   if (!url) return null;
   try {
-    const match = url.match(/[?&]code=([^&]+)/);
+    const match = url.match(/[?&]invite=([^&]+)/);
     return match ? decodeURIComponent(match[1]) : null;
   } catch { return null; }
 }
@@ -133,22 +131,39 @@ function Root() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [consented, setConsented] = useState(false);
-  const [initialInviteCode, setInitialInviteCode] = useState(null);
+  // linkChecked gates the auth listener so we redeem any member token BEFORE
+  // the listener fires — preventing a flash of AuthScreen on magic-link opens.
+  const [linkChecked, setLinkChecked] = useState(false);
 
-  // Deep link handling — captures invite code from https://dadboard.app/join?code=...
+  // Phase 1 — check deep link and redeem member token if present.
   useEffect(() => {
-    Linking.getInitialURL().then(url => {
-      const code = parseInviteCode(url);
-      if (code) setInitialInviteCode(code);
-    });
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      const code = parseInviteCode(url);
-      if (code) setInitialInviteCode(code);
+    async function checkDeepLink() {
+      const url = await Linking.getInitialURL();
+      const token = parseMemberToken(url);
+      if (token && !auth.currentUser) {
+        try {
+          await redeemMemberInvite(token);
+        } catch (e) {
+          Alert.alert('Invalid invite', e.message);
+        }
+      }
+      setLinkChecked(true);
+    }
+    checkDeepLink();
+
+    // Foreground deep links (app already open)
+    const sub = Linking.addEventListener('url', async ({ url }) => {
+      const token = parseMemberToken(url);
+      if (token && !auth.currentUser) {
+        redeemMemberInvite(token).catch(e => Alert.alert('Invalid invite', e.message));
+      }
     });
     return () => sub.remove();
   }, []);
 
+  // Phase 2 — auth listener starts only after the deep-link check completes.
   useEffect(() => {
+    if (!linkChecked) return;
     const unsub = onAuthStateChanged(async (user) => {
       setAuthed(!!user);
       if (user) {
@@ -158,7 +173,7 @@ function Root() {
       setReady(true);
     });
     return unsub;
-  }, []);
+  }, [linkChecked]);
 
   if (!ready) {
     return (
@@ -173,9 +188,7 @@ function Root() {
       <NavigationContainer>
         <StatusBar style="dark" />
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Auth">
-            {() => <AuthScreen initialInviteCode={initialInviteCode} />}
-          </Stack.Screen>
+          <Stack.Screen name="Auth" component={AuthScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     );
@@ -197,7 +210,7 @@ function Root() {
     <AppProvider>
       <NavigationContainer>
         <StatusBar style="dark" />
-        <AppNavigator initialInviteCode={initialInviteCode} />
+        <AppNavigator />
       </NavigationContainer>
     </AppProvider>
   );
