@@ -58,18 +58,24 @@ import { getFirestore, doc, ... } from 'firebase/firestore';
 import { initializeAuth, ... } from 'firebase/auth';
 ```
 
-All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `joinFamily` (kid joins via invite code), `deleteAllFamilyData` (GDPR/PDPA right to erasure — deletes all subcollections + Auth account).
+All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `deleteAllFamilyData` (GDPR/PDPA right to erasure), `generateMemberInvite` (Dad creates magic-link token for a family member), `redeemMemberInvite` (member taps link → anonymous sign-in + user doc write).
 
-**`subscribeToFamilyId(uid, callback)`** — real-time `onSnapshot` listener on `/users/{uid}` that replaces the old one-shot `getFamilyId()` read in AppContext. Used to handle the race condition where `createFamily()` commits its Firestore batch *after* AppContext's `onAuthStateChanged` fires (new-account sign-up flow). When the batch lands, the snapshot fires a second time and switches AppContext from guest → sync mode without requiring a sign-out. On `permission-denied` (anonymous users) it calls `callback(null)` silently. **Do not revert this to a one-shot `getDoc` call.**
+**`subscribeToFamilyId(uid, callback)`** — real-time `onSnapshot` on `/users/{uid}`. Callback signature: `callback(familyId, memberId)` — both strings or null. `memberId` is set when the user doc was written by `redeemMemberInvite`, pointing to the member slot Dad pre-created. AppContext uses it to select the correct `currentUser` after a magic-link join. Also handles the `createFamily()` batch race condition (new-account sign-up). **Do not revert this to a one-shot `getDoc` call.**
 
 ### Boot sequence (App.js)
 
-`Root` uses three boolean states: `ready`, `authed`, `consented`. Renders sequentially:
+`Root` uses a **two-phase boot** to support magic-link joins without a flash of AuthScreen:
+
+**Phase 1** (`linkChecked` state): `Linking.getInitialURL()` checks for `?invite=TOKEN`. If found and no existing session, calls `redeemMemberInvite(token)` which does `signInAnonymously` + writes `/users/{uid}`. This completes before Phase 2 starts.
+
+**Phase 2** (gated on `linkChecked`): `onAuthStateChanged` listener subscribes. By the time it fires, the anonymous session from Phase 1 is already established.
+
+`Root` renders sequentially:
 
 ```
-!ready     → loading spinner
-!authed    → AuthScreen (in NavigationContainer, standalone)
-!consented → ConsentScreen (plain component, no navigator)
+!ready     → loading spinner (covers Phase 1 + Phase 2 startup)
+!authed    → AuthScreen (Dad setup / sign-in only)
+!consented → ConsentScreen
 else       → AppProvider + NavigationContainer + AppNavigator
 ```
 
@@ -125,7 +131,9 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
 /families/{familyId}/requests/{id}   ← { type, fromId, fromName, status, createdAt, ... }
 /families/{familyId}/mealPlans/{memberId}  ← { [weekStart: YYYY-MM-DD]: { [date]: { lunch: bool, dinner: bool } } }
 /telegram_users/{telegramId}         ← { telegramUserId, familyId, name, registeredAt }  (written by bot, Admin SDK)
-/invites/{token}                     ← { familyId, createdBy, createdAt, expiresAt, used }  (8-char token, 48hr TTL, one-time use)
+/invites/{token}                     ← Telegram: { familyId, createdBy, createdAt, expiresAt, used }
+                                       Member:   { familyId, memberId, role, name, colorIndex, createdBy, createdAt, expiresAt, used }
+                                       Both: 8-char token, 48hr TTL, one-time use. Presence of memberId distinguishes type.
 ```
 
 Request types: `pickup` (has `date`, `time`, `location`, `dropTo`), `buy` (has `item`, `urgency`), `other` (has `message`, `urgency`).
@@ -137,19 +145,15 @@ Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required
 
 **`isParent()` in rules covers `'parent'`, `'spouse'`, and `'adult'`** — matches the app-level `isParent` check in `App.js`. If you add new adult roles, update this function in the rules too or those roles will be denied write access. Deploy with `firebase deploy --only firestore:rules` after any rules change.
 
-### Invite flow (InviteScreen.js + AuthScreen.js + App.js)
+### Invite flow
 
-InviteScreen shows **two invite paths**:
+There are now **two separate invite mechanisms** — keep them distinct:
 
-**1. Telegram bot** — `https://t.me/DadboardBot?start={token}`. Pro feature. No app needed; any phone with Telegram can register. `generateTelegramInvite(familyId, uid)` in `firebase.js` creates an 8-char token (e.g. `X7K2M9PQ`) stored in `/invites/{token}` with a 48hr expiry and `used: false`. The token is auto-generated when the Pro Telegram card mounts and can be regenerated. The bot validates the token (invalid/used/expired), marks it `used: true`, and registers the user in `/telegram_users/{telegramId}`.
+**1. Telegram bot** (Pro feature, `InviteScreen.js`) — `https://t.me/DadboardBot?start={token}`. `generateTelegramInvite(familyId, uid)` creates an 8-char token in `/invites/{token}` with a 48hr expiry. The bot validates and marks used. Token shape: `{ familyId, createdBy, expiresAt, used }`.
 
-**2. Dadboard app** — displays the raw `familyId` as a monospace invite code. WhatsApp message includes the Play Store URL. The recipient enters the code in AuthScreen → Join family tab.
+**2. Member magic link** (all families, `SwitchUserScreen.js`) — `https://dadboard.app/join?invite={token}`. Dad adds a member (name + role) → `addFamilyMember` creates the member doc → `generateMemberInvite` creates a token → Alert offers "Send via WhatsApp". Token shape: `{ familyId, memberId, role, name, colorIndex, expiresAt, used }`. When the link is tapped on the member's phone, `redeemMemberInvite(token)` in App.js Phase 1 boot: validates token, calls `signInAnonymously`, writes `/users/{anon_uid}` with `{ familyId, role, name, memberId }`, marks invite used. AppContext then finds `memberId` in the user doc and selects the correct family member as `currentUser`. **No login screen shown — the member lands directly on their home screen.**
 
-**Deep link receiving** (App.js `Root`): `Linking.getInitialURL()` handles cold-start opens; `Linking.addEventListener('url')` handles foreground opens. `parseInviteCode(url)` extracts the `?code=` param from `https://dadboard.app/join?code=FAMILYID`. `initialInviteCode` state flows through `Root` → `AppNavigator` → both `AuthScreen` instances.
-
-**Join flow** (AuthScreen): accepts `initialInviteCode` prop. When set: navigates directly to `'join'` screen, pre-fills `inviteCode` state, and shows a green "detected" badge instead of the code input. User selects role (Kid / Spouse / Other Adult) then submits; `joinFamily(code, name, role)` in `firebase.js` derives `colorIndex` internally (`-1` for adults, `Date.now() % 5` for kids).
-
-**Android deep link config**: `app.json` has `intentFilters` for `https://dadboard.app/join`. `autoVerify: false` until `dadboard.app` is live.
+**Deep link config**: `app.json` `intentFilters` cover `https://dadboard.app/join*`. `parseMemberToken(url)` in App.js extracts `?invite=` param. `autoVerify: false` until `dadboard.app` is live.
 
 ### Telegram bot companion (`~/dadboard-bot/`)
 
@@ -163,16 +167,15 @@ Separate Node.js/Express project (not inside this repo). Receives Telegram webho
 
 **Date parsing**: `parser.js` builds its system prompt dynamically via `buildSystemPrompt()`, injecting today's date in SGT (`Asia/Singapore` timezone) on every call. This is critical — a static prompt causes the model to use its training cutoff date for relative terms like "tomorrow".
 
-### AuthScreen.js — intent-first flow
+### AuthScreen.js — Dad-only auth
 
-Uses a `screen` state (`'welcome' | 'join' | 'parent' | 'signin'`). The welcome screen shows three `IntentCard` components; each leads to its own isolated form.
+AuthScreen is **for Dad only**. Kids and spouse join via magic link; they never see this screen. Uses a `screen` state (`'welcome' | 'parent' | 'signin'`).
 
-- **`'welcome'`** — three intent cards: "I have an invite code" → `'join'`; "Set up as Dad / Parent" → `'parent'`; "Sign in" → `'signin'`. Small "Try without account →" link at the bottom calls `signInAnonymously`.
-- **`'join'`** — invite code + name + role chips (Kid / Spouse / Other Adult) + email + password → `createEmailAccount` then `joinFamily(code, name, role)`. If `initialInviteCode` prop is set, skips to this screen automatically and shows a green badge instead of the code input.
+- **`'welcome'`** — two `IntentCard` components: "Set up as Dad / Parent" → `'parent'`; "Sign in" → `'signin'`. Hint text explains that family members join via invite link.
 - **`'parent'`** — name + email + password (show/hide toggle) → `createEmailAccount` then `createFamily`. `auth/email-already-in-use` navigates to `'signin'` with email pre-filled; create password is **never** copied to the sign-in password field.
-- **`'signin'`** — email + password → `signInWithEmail`. "Forgot password?" link calls `sendPasswordReset`. Back button on all sub-screens returns to `'welcome'`.
+- **`'signin'`** — email + password → `signInWithEmail`. "Forgot password?" calls `sendPasswordReset`.
 
-Each screen has fully independent email/password state — no shared state between create, join, and sign-in forms.
+Each screen has fully independent email/password state. No `initialInviteCode` prop — deep-link join is handled entirely in App.js Phase 1 before AuthScreen ever renders.
 
 ### SettingsScreen.js
 
@@ -269,6 +272,10 @@ The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throu
 - [ ] After domain is live: set `intentFilters[0].autoVerify: true` in `app.json` and host `/.well-known/assetlinks.json` for direct deep link opening
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
 
+**V2 features (post-launch)**
+- [ ] **Google Sign-In** — add as primary auth for Dad on welcome screen. Install: `npx expo install expo-auth-session expo-web-browser @react-native-google-signin/google-signin`. Enable Google provider in Firebase Console → Auth → Sign-in method. Add SHA-1 fingerprint (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1`). Use `GoogleSignin.signIn()` → `signInWithCredential(auth, GoogleAuthProvider.credential(idToken))` → `createFamily`. Keep email/password as fallback. Benefit: no password, no fictitious emails, one-tap on Android.
+- [ ] **Apple Sign-In** — add when iOS launched.
+
 ---
 
 ## Mandatory pre-session checklist
@@ -340,7 +347,7 @@ Run all 5 checks, fix any issues, THEN build.
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
 - SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
 - Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
-- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; resolved by giving each screen (`'parent'`, `'join'`, `'signin'`) fully independent email/password state with no cross-screen sharing
+- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; resolved by giving each screen (`'parent'`, `'signin'`) fully independent email/password state with no cross-screen sharing
 - ConsentScreen: "I agree" tapped but nothing happened — `onAuthStateChanged` token refresh fired during `recordConsent`, called `hasConsented()` before write completed, got `false`, overwrote `consentGiven=true`; fixed with `justConsented` ref in Root
 - KidHomeScreen: crash on switching to kid profile — `currentUser.colorIndex` could be `undefined` (new kid) making array index `NaN`; fixed with `Math.max(0, currentUser?.colorIndex ?? 0) % 5`
 - PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed

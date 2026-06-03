@@ -1,6 +1,6 @@
 // src/screens/SwitchUserScreen.js
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { generateMemberInvite } from '../utils/firebase';
@@ -94,6 +94,15 @@ export default function SwitchUserScreen({ navigation }) {
                 Alert.alert('WhatsApp not found', `Share this link with ${member.name}:\n\n${deepLink}`);
               }
               if (navigation.canGoBack()) navigation.goBack();
+            },
+          },
+          {
+            text: 'Copy link',
+            onPress: () => {
+              Clipboard.setString(deepLink);
+              Alert.alert('Link copied!', 'Paste it in any browser or message app to share.', [
+                { text: 'OK', onPress: () => { if (navigation.canGoBack()) navigation.goBack(); } },
+              ]);
             },
           },
           {

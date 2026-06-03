@@ -15,7 +15,19 @@ import {
   sendPasswordReset, deleteAllFamilyData, auth,
 } from '../utils/firebase';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
+
+// Keys cleared on sign-out. dadboard_consented is intentionally excluded —
+// sign-out is not account deletion; the user already agreed and shouldn't
+// be shown the consent screen again on their next sign-in.
+const SIGN_OUT_CLEAR_KEYS = [
+  'dadboard_family',
+  'dadboard_requests',
+  'dadboard_current_user',
+  'dadboard_meal_plans',
+  'dadboard_favourite_places',
+  'dadboard_setup_complete',
+];
 
 export default function SettingsScreen({ navigation }) {
   const {
@@ -140,7 +152,7 @@ export default function SettingsScreen({ navigation }) {
           onPress: async () => {
             try {
               await signOut(auth);
-              await AsyncStorage.clear();
+              await AsyncStorage.multiRemove(SIGN_OUT_CLEAR_KEYS);
             } catch (e) {
               console.error('Sign out failed:', e.message);
             }
