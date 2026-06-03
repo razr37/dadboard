@@ -29,6 +29,10 @@ function withOrangeColors(config) {
   return withAndroidColors(config, (mod) => {
     mod.modResults = setColor(mod.modResults, 'iconBackground', ORANGE);
     mod.modResults = setColor(mod.modResults, 'splashscreen_background', ORANGE);
+    // colorPrimary / colorPrimaryDark default to a dark blue in Expo's template,
+    // which causes a blue/green flash on the splash screen. Pin them to orange.
+    mod.modResults = setColor(mod.modResults, 'colorPrimary', ORANGE);
+    mod.modResults = setColor(mod.modResults, 'colorPrimaryDark', ORANGE);
     return mod;
   });
 }
@@ -67,8 +71,34 @@ function withBlankSplashLogo(config) {
   ]);
 }
 
+
+function withOrangeColorsNight(config) {
+  return withDangerousMod(config, [
+    'android',
+    (mod) => {
+      const nightDir = require('path').join(
+        mod.modRequest.platformProjectRoot,
+        'app/src/main/res/values-night'
+      );
+      fs.mkdirSync(nightDir, { recursive: true });
+      fs.writeFileSync(
+        require('path').join(nightDir, 'colors.xml'),
+        `<resources>
+  <color name="splashscreen_background">#F07C2A</color>
+  <color name="iconBackground">#F07C2A</color>
+  <color name="colorPrimary">#F07C2A</color>
+  <color name="colorPrimaryDark">#F07C2A</color>
+  <color name="notification_icon_color">#F07C2A</color>
+</resources>`
+      );
+      return mod;
+    },
+  ]);
+}
+
 module.exports = (config) => {
   config = withOrangeColors(config);
+  config = withOrangeColorsNight(config);
   config = withBlankSplashLogo(config);
   config = withTargetSdk35(config);
   return config;

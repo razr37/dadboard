@@ -3,6 +3,7 @@
     "name": "Dadboard",
     "slug": "dadboard",
     "version": "1.0.1",
+    "scheme": "dadboard",
     "icon": "./assets/icon.png",
     "splash": {
       "backgroundColor": "#F07C2A",
@@ -28,6 +29,18 @@
       "intentFilters": [
         {
           "action": "VIEW",
+          "data": [
+            {
+              "scheme": "dadboard"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
           "autoVerify": false,
           "data": [
             {
@@ -36,7 +49,10 @@
               "pathPrefix": "/join"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
