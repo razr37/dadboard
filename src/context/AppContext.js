@@ -296,6 +296,7 @@ export function AppProvider({ children }) {
   async function deleteFamilyMember(memberId) {
     if (isSynced && familyId) {
       await fbDeleteFamilyMember(familyId, memberId);
+      setFamily(prev => prev.filter(m => m.id !== memberId));
     } else {
       await saveLocalFamily(family.filter(m => m.id !== memberId));
     }
