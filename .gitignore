@@ -72,3 +72,4 @@ dist/
 *.aab
 *.hbc
 android/app/src/main/res/drawable-*/
+android/app/release.keystore
