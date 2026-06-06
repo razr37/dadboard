@@ -17,9 +17,8 @@ const TELEGRAM_BOT = 'DadboardBot';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.dadboard.app';
 
 const ROLE_LABEL = {
-  kid:    'Kid',
-  spouse: 'Spouse',
-  adult:  'Other Adult',
+  telegram_user: 'Telegram User',
+  app_user:      'App User',
 };
 
 function formatExpiry(date) {
@@ -52,11 +51,21 @@ export default function InviteScreen({ navigation }) {
   async function generateMemberToken(member) {
     patchMember(member.id, { generating: true });
     try {
-      const token = await generateMemberInvite(
-        familyId, member.id, member.role, member.name, member.colorIndex
-      );
+      let token, link;
+      if (member.role === 'telegram_user') {
+        // Telegram users don't install the app — give them a t.me bot link
+        token = await generateTelegramInvite(familyId, auth.currentUser?.uid);
+        link = `https://t.me/${TELEGRAM_BOT}?start=${token}`;
+      } else {
+        // App users (app_user) get a dadboard:// magic link
+        token = await generateMemberInvite(
+          familyId, member.id, member.role, member.name, member.colorIndex
+        );
+        link = `dadboard://join?invite=${token}`;
+      }
       patchMember(member.id, {
         token,
+        link,
         expiry: new Date(Date.now() + 48 * 60 * 60 * 1000),
         generating: false,
         copied: false,
@@ -128,7 +137,7 @@ export default function InviteScreen({ navigation }) {
             <Ionicons name="people-outline" size={40} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No family members yet</Text>
             <Text style={styles.emptyBody}>
-              Add kids or a spouse from the member list, then come back here to send their invite link.
+              Add Telegram Users or App Users from the member list, then come back here to send their invite link.
             </Text>
           </View>
         ) : (
@@ -136,13 +145,13 @@ export default function InviteScreen({ navigation }) {
             <Text style={styles.sectionLabel}>Family member invites</Text>
             {invitableMembers.map(member => {
               const invite = memberInvites[member.id] || {};
-              const deepLink = invite.token
-                ? `https://dadboard.app/join?invite=${invite.token}`
-                : null;
+              const deepLink = invite.link || null;
               const waMessage = deepLink
-                ? `${member.name} has been added to your Dadboard family! 🎉\n\n` +
-                  `Install the app: ${PLAY_STORE_URL}\n\n` +
-                  `Then tap this link to join: ${deepLink}\n\n(Link expires in 48 hours)`
+                ? member.role === 'telegram_user'
+                  ? `Message @${TELEGRAM_BOT} on Telegram to join the family:\n${deepLink}\n\n(Link expires in 48 hours)`
+                  : `${member.name} has been added to your Dadboard family! 🎉\n\n` +
+                    `Install the app: ${PLAY_STORE_URL}\n\n` +
+                    `Then tap this link to join: ${deepLink}\n\n(Link expires in 48 hours)`
                 : null;
 
               return (

@@ -96,8 +96,7 @@ function AppNavigator() {
   }
 
   const isParent = currentUser?.role === 'parent'
-    || currentUser?.role === 'spouse'
-    || currentUser?.role === 'adult';
+    || currentUser?.role === 'app_user';
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -118,7 +117,9 @@ function AppNavigator() {
   );
 }
 
-// Extract member magic-link token from https://dadboard.app/join?invite=TOKEN
+// Extract member magic-link token from dadboard://join?invite=TOKEN
+// The regex matches ?invite= in any URL scheme, so it works for both
+// dadboard:// (custom scheme, used by invite links) and https:// fallback.
 function parseMemberToken(url) {
   if (!url) return null;
   try {
@@ -167,8 +168,12 @@ function Root() {
     const unsub = onAuthStateChanged(async (user) => {
       setAuthed(!!user);
       if (user) {
-        const c = await AsyncStorage.getItem('dadboard_consented');
-        setConsented(c === 'yes');
+        // Debug: log AsyncStorage state so consent regressions are visible in Metro
+        const allKeys = await AsyncStorage.getAllKeys();
+        const consentVal = await AsyncStorage.getItem('dadboard_consented');
+        console.log('[Auth] AsyncStorage keys:', allKeys);
+        console.log('[Auth] dadboard_consented:', consentVal);
+        setConsented(consentVal === 'yes');
       }
       setReady(true);
     });

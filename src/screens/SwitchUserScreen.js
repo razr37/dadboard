@@ -10,24 +10,23 @@ import { Avatar, ClearableInput } from '../components/UI';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.dadboard.app';
 
 const ROLE_OPTIONS = [
-  { value: 'kid',    label: 'Kid',              desc: 'Simplified view · can submit requests' },
-  { value: 'spouse', label: 'Spouse / Partner',  desc: 'Full dashboard · manages all requests' },
-  { value: 'adult',  label: 'Other adult',       desc: 'Full dashboard · manages all requests' },
+  { value: 'telegram_user', label: 'Telegram User', desc: 'Interacts via Telegram bot · no app needed' },
+  { value: 'app_user',      label: 'App User',       desc: 'Full dashboard · manages all requests' },
 ];
 
-const ADULT_ROLES = new Set(['parent', 'spouse', 'adult']);
+const ADULT_ROLES = new Set(['parent', 'app_user']);
 
 function roleLabel(role) {
-  if (role === 'parent')  return 'Parent · receives all requests';
-  if (role === 'spouse')  return 'Spouse / Partner · full dashboard';
-  if (role === 'adult')   return 'Adult · full dashboard';
-  return 'Kid · can send requests';
+  if (role === 'parent')        return 'Parent · receives all requests';
+  if (role === 'app_user')      return 'App User · full dashboard';
+  if (role === 'telegram_user') return 'Telegram User · sends via Telegram';
+  return 'Telegram User · sends via Telegram';
 }
 
 export default function SwitchUserScreen({ navigation }) {
   const { family, currentUser, switchUser, addFamilyMember, familyId, isSynced } = useApp();
   const [newName, setNewName] = useState('');
-  const [selectedRole, setSelectedRole] = useState('kid');
+  const [selectedRole, setSelectedRole] = useState('telegram_user');
   const [adding, setAdding] = useState(false);
 
   function handleSwitch(member) {
@@ -48,7 +47,7 @@ export default function SwitchUserScreen({ navigation }) {
     try {
       const member = await addFamilyMember(name, selectedRole);
       setNewName('');
-      setSelectedRole('kid');
+      setSelectedRole('telegram_user');
       setAdding(false);
 
       // Offer to send a magic-link invite (synced families only)
@@ -73,7 +72,7 @@ export default function SwitchUserScreen({ navigation }) {
       const token = await generateMemberInvite(
         familyId, member.id, member.role, member.name, member.colorIndex
       );
-      const deepLink = `https://dadboard.app/join?invite=${token}`;
+      const deepLink = `dadboard://join?invite=${token}`;
       const waMessage =
         `${member.name} has been added to your Dadboard family! 🎉\n\n` +
         `Install the app: ${PLAY_STORE_URL}\n\n` +
@@ -121,11 +120,11 @@ export default function SwitchUserScreen({ navigation }) {
   function handleCancel() {
     setAdding(false);
     setNewName('');
-    setSelectedRole('kid');
+    setSelectedRole('telegram_user');
   }
 
-  const adults = family.filter(f => ADULT_ROLES.has(f.role));
-  const kids   = family.filter(f => f.role === 'kid');
+  const appUsers      = family.filter(f => ADULT_ROLES.has(f.role));
+  const telegramUsers = family.filter(f => f.role === 'telegram_user');
 
   return (
     <View style={styles.container}>
@@ -138,8 +137,8 @@ export default function SwitchUserScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.sectionLabel}>Adults</Text>
-        {adults.map(member => (
+        <Text style={styles.sectionLabel}>App Users</Text>
+        {appUsers.map(member => (
           <MemberCard
             key={member.id}
             member={member}
@@ -148,15 +147,15 @@ export default function SwitchUserScreen({ navigation }) {
           />
         ))}
 
-        {kids.length > 0 && (
+        {telegramUsers.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>Kids</Text>
-            {kids.map(kid => (
+            <Text style={styles.sectionLabel}>Telegram Users</Text>
+            {telegramUsers.map(member => (
               <MemberCard
-                key={kid.id}
-                member={kid}
-                isActive={currentUser.id === kid.id}
-                onPress={() => handleSwitch(kid)}
+                key={member.id}
+                member={member}
+                isActive={currentUser.id === member.id}
+                onPress={() => handleSwitch(member)}
               />
             ))}
           </>
@@ -219,7 +218,7 @@ export default function SwitchUserScreen({ navigation }) {
         <View style={styles.tip}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textTertiary} />
           <Text style={styles.tipText}>
-            Switch to a kid's profile so they can send requests without seeing the full family view.
+            Switch to a Telegram User profile to add requests on their behalf from this device.
           </Text>
         </View>
 

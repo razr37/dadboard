@@ -151,9 +151,9 @@ There are now **two separate invite mechanisms** — keep them distinct:
 
 **1. Telegram bot** (Pro feature, `InviteScreen.js`) — `https://t.me/DadboardBot?start={token}`. `generateTelegramInvite(familyId, uid)` creates an 8-char token in `/invites/{token}` with a 48hr expiry. The bot validates and marks used. Token shape: `{ familyId, createdBy, expiresAt, used }`.
 
-**2. Member magic link** (all families, `SwitchUserScreen.js`) — `https://dadboard.app/join?invite={token}`. Dad adds a member (name + role) → `addFamilyMember` creates the member doc → `generateMemberInvite` creates a token → Alert offers "Send via WhatsApp". Token shape: `{ familyId, memberId, role, name, colorIndex, expiresAt, used }`. When the link is tapped on the member's phone, `redeemMemberInvite(token)` in App.js Phase 1 boot: validates token, calls `signInAnonymously`, writes `/users/{anon_uid}` with `{ familyId, role, name, memberId }`, marks invite used. AppContext then finds `memberId` in the user doc and selects the correct family member as `currentUser`. **No login screen shown — the member lands directly on their home screen.**
+**2. Member magic link** (all families, `SwitchUserScreen.js`) — `dadboard://join?invite={token}`. Dad adds a member (name + role) → `addFamilyMember` creates the member doc → `generateMemberInvite` creates a token → Alert offers "Send via WhatsApp" and "Copy link". Token shape: `{ familyId, memberId, role, name, colorIndex, expiresAt, used }`. When the link is tapped on the member's phone, `redeemMemberInvite(token)` in App.js Phase 1 boot: validates token, calls `signInAnonymously`, writes `/users/{anon_uid}` with `{ familyId, role, name, memberId }`, marks invite used. AppContext then finds `memberId` in the user doc and selects the correct family member as `currentUser`. **No login screen shown — the member lands directly on their home screen.**
 
-**Deep link config**: `app.json` `intentFilters` cover `https://dadboard.app/join*`. `parseMemberToken(url)` in App.js extracts `?invite=` param. `autoVerify: false` until `dadboard.app` is live.
+**Deep link config**: `app.json` has `"scheme": "dadboard"` at the expo root — Expo `prebuild` auto-generates the Android intent filter for `dadboard://` from this. `parseMemberToken(url)` in App.js extracts `?invite=` from any URL scheme via regex, handling both `dadboard://` and HTTPS fallback. To test: copy a `dadboard://join?invite=TOKEN` link and open it in Chrome on Android — it will prompt to open Dadboard.
 
 ### Telegram bot companion (`~/dadboard-bot/`)
 
@@ -231,7 +231,7 @@ Both `MealsScreen` (Dad) and `KidHomeScreen` (`MealsThisWeek` component) use a `
 
 Registered in `app.json` as the first plugin. Runs during every `npx expo prebuild` (including `--clean`) and writes three things that are gitignored and would otherwise be missing:
 
-- **`withOrangeColors`** — sets `iconBackground` and `splashscreen_background` to `#F07C2A` in `android/.../colors.xml`
+- **`withOrangeColors`** — sets `iconBackground`, `splashscreen_background`, `colorPrimary`, and `colorPrimaryDark` to `#F07C2A` in `android/.../colors.xml`. `colorPrimary` defaults to dark blue in Expo's template, causing a blue flash on launch if not overridden.
 - **`withBlankSplashLogo`** — writes a 1×1 transparent PNG to `drawable/splashscreen_logo.png` (satisfies the XML reference expo-splash-screen injects even when no splash image is configured)
 - **`withTargetSdk35`** — patches `android/build.gradle` after Expo generates it, replacing the `targetSdkVersion` fallback with `'35'` (Expo's template defaults to `'34'`; this ensures every `prebuild --clean` produces the correct value)
 
@@ -344,6 +344,8 @@ Run all 5 checks, fix any issues, THEN build.
 - `@react-native-community/datetimepicker` is a native module — requires `expo prebuild` + a fresh native build after adding it
 
 ## Known issues resolved
+- Consent screen shown again after sign-out — `AsyncStorage.clear()` in `handleSignOut` wiped `dadboard_consented`; replaced with `AsyncStorage.multiRemove(SIGN_OUT_CLEAR_KEYS)` which preserves consent. Account deletion still uses `clear()` (correct for full erasure). Debug logging added to `onAuthStateChanged` in App.js — check Metro for `[Auth] dadboard_consented: yes` after sign-out + sign-in.
+- Splash screen blue/green flash — Expo's `colors.xml` template sets `colorPrimary` to dark blue; `withOrangeColors` plugin now also writes `colorPrimary` and `colorPrimaryDark` so they survive every `prebuild --clean`.
 - SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
 - SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
 - Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
@@ -367,6 +369,29 @@ Run all 5 checks, fix any issues, THEN build.
 - AuthScreen handleCreateParent: Firestore errors from `createFamily()` were shown as "Something went wrong" — auth and family-creation errors were in one try/catch; split into separate blocks so `createFamily` errors show `e.message` / `e.code` directly
 - Build error `@drawable/notification_icon` missing — expo-notifications injects this meta-data when `"icon"` is set in its plugin config; removed the `"icon"` property from `app.json` entirely so the drawable reference is never injected; `drawable-*/` is gitignored so PNG-copy approaches do not survive `prebuild --clean`
 - DadHomeScreen `getTodayRequests`: used `toISOString().split('T')[0]` for today's date — caused SGT pickups from the Telegram bot (which writes SGT dates) to never appear on the Today tab; fixed with `toLocalDateStr(new Date())`
+
+## NEXT SESSION — Ready to commit and build
+
+All changes from this session are uncommitted. Start the next session with:
+
+```bash
+git add .
+git commit -m "Deep link scheme dadboard://, fix colorPrimary splash, consent debug logging"
+```
+
+Then build and install:
+```bash
+export ANDROID_HOME=$HOME/Library/Android/sdk
+cd ~/Dadboard-work/android && ./gradlew assembleRelease 2>&1 | tail -5
+adb install -r ~/Dadboard-work/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Post-install test checklist:
+1. Sign out → sign back in → confirm **no PDPA consent screen** (check Metro logs: `[Auth] dadboard_consented: yes`)
+2. Add a kid in SwitchUserScreen → copy the `dadboard://` invite link → open in Chrome → confirm app opens and kid is auto-logged in with no login screen
+3. Confirm **no green/blue square on launch** — splash should be solid orange `#F07C2A`
+
+---
 
 ## Session management
 - Each Claude.ai chat session has a context limit

@@ -293,10 +293,10 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function addFamilyMember(name, role = 'kid') {
-    // Adults (spouse/adult) share the parent color (-1); kids get a rotating kid color.
-    const colorIndex = role === 'kid'
-      ? family.filter(f => f.role === 'kid').length % 5
+  async function addFamilyMember(name, role = 'telegram_user') {
+    // app_user (full dashboard) shares parent orange (-1); telegram_user gets a rotating colour.
+    const colorIndex = role === 'telegram_user'
+      ? family.filter(f => f.role === 'telegram_user').length % 5
       : -1;
     if (isSynced && familyId) {
       const id = await addKidMember(familyId, name, colorIndex, role);

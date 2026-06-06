@@ -163,15 +163,15 @@ export function subscribeToFamilyId(uid, callback) {
   );
 }
 
-export async function joinFamily(familyId, memberName, role = 'kid') {
+export async function joinFamily(familyId, memberName, role = 'telegram_user') {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
   const familySnap = await getDoc(doc(db, 'families', familyId));
   if (!familySnap.exists()) throw new Error('Family not found. Check the invite code.');
 
-  // Adults (spouse/adult) use the parent orange colour; kids get a rotating colour.
-  const colorIndex = (role === 'spouse' || role === 'adult') ? -1 : (Date.now() % 5);
+  // app_user (full dashboard) uses parent orange (-1); telegram_user gets a rotating colour.
+  const colorIndex = role === 'app_user' ? -1 : (Date.now() % 5);
 
   const batch = writeBatch(db);
 
@@ -297,7 +297,7 @@ export async function updateMemberDoc(familyId, uid, data) {
   await updateDoc(doc(db, 'families', familyId, 'members', uid), data);
 }
 
-export async function addKidMember(familyId, name, colorIndex, role = 'kid') {
+export async function addKidMember(familyId, name, colorIndex, role = 'telegram_user') {
   const ref = doc(collection(db, 'families', familyId, 'members'));
   await setDoc(ref, {
     uid: ref.id,
