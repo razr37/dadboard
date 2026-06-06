@@ -93,8 +93,9 @@ function ScheduleCard({ req, onStatusChange }) {
         </View>
         <View style={styles.cardRoute}>
           <Ionicons name="location-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.routeText}>{req.location}</Text>
+          <Text style={styles.routeText}>{req.from || req.location || 'Home'}</Text>
           <Ionicons name="arrow-forward-outline" size={13} color={colors.textTertiary} style={{ marginLeft: 8 }} />
+          <Text style={styles.routeText}>{req.to || req.location || ''}</Text>
           <Text style={styles.routeText}>{req.dropTo || 'Home'}</Text>
         </View>
         {req.note ? <Text style={styles.noteText}>{req.note}</Text> : null}
