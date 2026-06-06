@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { generateMemberInvite, generateTelegramInvite } from '../utils/firebase';
+import { generateMemberInvite, generateTelegramInvite, auth } from '../utils/firebase';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, ClearableInput } from '../components/UI';
 
@@ -72,7 +72,7 @@ export default function SwitchUserScreen({ navigation }) {
       const isTelegram = member.role === 'telegram_user';
       let shareLink, waMessage;
       if (isTelegram) {
-        const token = await generateTelegramInvite(familyId);
+        const token = await generateTelegramInvite(familyId, auth.currentUser?.uid);
         shareLink = `https://t.me/DadboardBot?start=${token}`;
         waMessage = `${member.name} has been added to your Dadboard family! 🎉\n\nTap this link to connect via Telegram:\n${shareLink}\n\n(Link expires in 48 hours)`;
       } else {
