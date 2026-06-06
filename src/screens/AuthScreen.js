@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  signInWithEmail, createEmailAccount, createFamily, sendPasswordReset,
+  signInWithEmail, createEmailAccount, createFamily, sendPasswordReset, signInWithGoogle,
 } from '../utils/firebase';
 import { colors, spacing, radius, typography } from '../utils/theme';
 import { ClearableInput } from '../components/UI';
@@ -101,6 +101,32 @@ export default function AuthScreen() {
     }
   }
 
+  // ── Google sign-in ─────────────────────────────────────────────────────────
+  async function handleGoogleSignIn() {
+    setLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (!result) return; // user cancelled the Google picker
+      if (result.isNewUser) {
+        const displayName = result.user.displayName || 'Dad';
+        try {
+          await createFamily(displayName);
+        } catch (e) {
+          console.error('[AuthScreen] createFamily (Google) failed:', e.code, e.message);
+          Alert.alert(
+            'Family setup failed',
+            `Google sign-in worked but family creation failed: ${e.message || e.code}\n\nPlease sign in again to retry.`
+          );
+        }
+      }
+      // Existing users: AppContext loads their family via onAuthStateChanged automatically
+    } catch (e) {
+      Alert.alert('Google sign-in failed', e.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -143,6 +169,9 @@ export default function AuthScreen() {
             <BackBtn onPress={() => setScreen('welcome')} />
             <Text style={styles.formTitle}>Set up as Dad / Parent</Text>
             <Text style={styles.formSub}>Your family joins later using an invite link you share from the app.</Text>
+
+            <GoogleBtn onPress={handleGoogleSignIn} loading={loading} />
+            <Divider />
 
             <Field label="Your name">
               <ClearableInput
@@ -208,6 +237,9 @@ export default function AuthScreen() {
             <BackBtn onPress={() => setScreen('welcome')} />
             <Text style={styles.formTitle}>Welcome back</Text>
             <Text style={styles.formSub}>Sign in to your Dadboard account.</Text>
+
+            <GoogleBtn onPress={handleGoogleSignIn} loading={loading} />
+            <Divider />
 
             <Field label="Email address">
               <ClearableInput
@@ -278,6 +310,35 @@ function BackBtn({ onPress }) {
       <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
       <Text style={styles.backBtnText}>Back</Text>
     </TouchableOpacity>
+  );
+}
+
+function GoogleBtn({ onPress, loading }) {
+  return (
+    <TouchableOpacity
+      style={[styles.googleBtn, loading && { opacity: 0.7 }]}
+      onPress={onPress}
+      disabled={loading}
+      activeOpacity={0.85}
+    >
+      {loading
+        ? <ActivityIndicator color={colors.textPrimary} size="small" />
+        : <>
+            <Ionicons name="logo-google" size={18} color="#4285F4" />
+            <Text style={styles.googleBtnText}>Continue with Google</Text>
+          </>
+      }
+    </TouchableOpacity>
+  );
+}
+
+function Divider() {
+  return (
+    <View style={styles.divider}>
+      <View style={styles.dividerLine} />
+      <Text style={styles.dividerText}>or continue with email</Text>
+      <View style={styles.dividerLine} />
+    </View>
   );
 }
 
@@ -379,6 +440,20 @@ const styles = StyleSheet.create({
     width: 44, height: 48, alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
   },
+
+  googleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, paddingVertical: 13,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong,
+    backgroundColor: colors.bgCard, marginBottom: spacing.sm,
+  },
+  googleBtnText: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
+  divider: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: spacing.sm, marginBottom: spacing.lg,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { ...typography.caption, color: colors.textTertiary },
 
   primaryBtn: {
     backgroundColor: colors.primary, paddingVertical: 14,

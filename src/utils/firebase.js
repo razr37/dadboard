@@ -18,6 +18,9 @@ import {
   signInAnonymously as fbSignInAnonymously,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithCredential,
+  GoogleAuthProvider,
+  getAdditionalUserInfo,
   signOut as fbSignOut,
   onAuthStateChanged as fbOnAuthStateChanged,
   EmailAuthProvider,
@@ -25,6 +28,7 @@ import {
   deleteUser,
   sendPasswordResetEmail as fbSendPasswordResetEmail,
 } from 'firebase/auth';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import {
   getFirestore,
   doc, collection,
@@ -60,6 +64,16 @@ export async function signInAnonymously() {
 export async function signInWithEmail(email, password) {
   const { user } = await signInWithEmailAndPassword(auth, email, password);
   return user;
+}
+
+export async function signInWithGoogle() {
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+  if (response.type !== 'success') return null; // user cancelled
+  const credential = GoogleAuthProvider.credential(response.data.idToken);
+  const userCredential = await signInWithCredential(auth, credential);
+  const additionalInfo = getAdditionalUserInfo(userCredential);
+  return { user: userCredential.user, isNewUser: additionalInfo?.isNewUser ?? false };
 }
 
 export async function createEmailAccount(email, password) {

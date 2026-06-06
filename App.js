@@ -22,9 +22,14 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { colors } from './src/utils/theme';
 import { onAuthStateChanged, redeemMemberInvite, auth } from './src/utils/firebase';
+
+GoogleSignin.configure({
+  webClientId: '382739338353-7nbkslk96dq28j51ae4ns1bt0jb9h8g9.apps.googleusercontent.com',
+});
 
 import AuthScreen from './src/screens/AuthScreen';
 import ConsentScreen from './src/screens/ConsentScreen';
