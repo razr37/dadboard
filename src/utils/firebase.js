@@ -311,6 +311,10 @@ export async function updateMemberDoc(familyId, uid, data) {
   await updateDoc(doc(db, 'families', familyId, 'members', uid), data);
 }
 
+export async function deleteFamilyMember(familyId, memberId) {
+  await deleteDoc(doc(db, 'families', familyId, 'members', memberId));
+}
+
 export async function addKidMember(familyId, name, colorIndex, role = 'telegram_user') {
   const ref = doc(collection(db, 'families', familyId, 'members'));
   await setDoc(ref, {

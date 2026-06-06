@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking, Clipboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { generateMemberInvite } from '../utils/firebase';
+import { generateMemberInvite, generateTelegramInvite } from '../utils/firebase';
 import { colors, spacing, radius, typography, shadow } from '../utils/theme';
 import { Avatar, ClearableInput } from '../components/UI';
 
@@ -24,7 +24,7 @@ function roleLabel(role) {
 }
 
 export default function SwitchUserScreen({ navigation }) {
-  const { family, currentUser, switchUser, addFamilyMember, familyId, isSynced } = useApp();
+  const { family, currentUser, authUser, switchUser, addFamilyMember, deleteFamilyMember, familyId, isSynced } = useApp();
   const [newName, setNewName] = useState('');
   const [selectedRole, setSelectedRole] = useState('telegram_user');
   const [adding, setAdding] = useState(false);
@@ -69,14 +69,18 @@ export default function SwitchUserScreen({ navigation }) {
 
   async function promptInvite(member) {
     try {
-      const token = await generateMemberInvite(
-        familyId, member.id, member.role, member.name, member.colorIndex
-      );
-      const deepLink = `dadboard://join?invite=${token}`;
-      const waMessage =
-        `${member.name} has been added to your Dadboard family! 🎉\n\n` +
-        `Install the app: ${PLAY_STORE_URL}\n\n` +
-        `Then tap this link to join: ${deepLink}\n\n(Link expires in 48 hours)`;
+      const isTelegram = member.role === 'telegram_user';
+      let shareLink, waMessage;
+      if (isTelegram) {
+        const token = await generateTelegramInvite(familyId);
+        shareLink = `https://t.me/DadboardBot?start=${token}`;
+        waMessage = `${member.name} has been added to your Dadboard family! 🎉\n\nTap this link to connect via Telegram:\n${shareLink}\n\n(Link expires in 48 hours)`;
+      } else {
+        const token = await generateMemberInvite(familyId, member.id, member.role, member.name, member.colorIndex);
+        shareLink = `dadboard://join?invite=${token}`;
+        waMessage = `${member.name} has been added to your Dadboard family! 🎉\n\nInstall the app: ${PLAY_STORE_URL}\n\nThen tap this link to join: ${shareLink}\n\n(Link expires in 48 hours)`;
+      }
+      const deepLink = shareLink;
 
       Alert.alert(
         `${member.name} added!`,
@@ -123,6 +127,27 @@ export default function SwitchUserScreen({ navigation }) {
     setSelectedRole('telegram_user');
   }
 
+  function handleDelete(member) {
+    Alert.alert(
+      `Remove ${member.name}?`,
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteFamilyMember(member.id);
+            } catch (e) {
+              Alert.alert('Error', `Could not remove ${member.name}.\n\n${e.message}`);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   const appUsers      = family.filter(f => ADULT_ROLES.has(f.role));
   const telegramUsers = family.filter(f => f.role === 'telegram_user');
 
@@ -144,6 +169,8 @@ export default function SwitchUserScreen({ navigation }) {
             member={member}
             isActive={currentUser.id === member.id}
             onPress={() => handleSwitch(member)}
+            canDelete={member.uid !== authUser?.uid && member.id !== authUser?.uid}
+            onDelete={() => handleDelete(member)}
           />
         ))}
 
@@ -156,6 +183,8 @@ export default function SwitchUserScreen({ navigation }) {
                 member={member}
                 isActive={currentUser.id === member.id}
                 onPress={() => handleSwitch(member)}
+                canDelete
+                onDelete={() => handleDelete(member)}
               />
             ))}
           </>
@@ -228,7 +257,7 @@ export default function SwitchUserScreen({ navigation }) {
   );
 }
 
-function MemberCard({ member, isActive, onPress }) {
+function MemberCard({ member, isActive, onPress, canDelete, onDelete }) {
   const memberColor = member.colorIndex >= 0 ? colors.kids[member.colorIndex % 5] : colors.primary;
   return (
     <TouchableOpacity
@@ -245,6 +274,15 @@ function MemberCard({ member, isActive, onPress }) {
         <View style={[styles.activeCheck, { backgroundColor: memberColor }]}>
           <Ionicons name="checkmark" size={14} color={colors.white} />
         </View>
+      )}
+      {canDelete && !isActive && (
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={onDelete}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="trash-outline" size={17} color={colors.danger} />
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
@@ -280,6 +318,7 @@ const styles = StyleSheet.create({
     width: 24, height: 24, borderRadius: radius.full,
     alignItems: 'center', justifyContent: 'center',
   },
+  deleteBtn: { padding: spacing.xs },
   addNewBtn: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     padding: spacing.lg, borderRadius: radius.lg,

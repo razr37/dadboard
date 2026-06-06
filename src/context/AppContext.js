@@ -18,7 +18,7 @@ import {
   addRequest as fbAddRequest,
   updateRequestStatus as fbUpdateStatus,
   deleteRequest as fbDeleteRequest,
-  addKidMember,
+  addKidMember, deleteFamilyMember as fbDeleteFamilyMember,
   subscribeMealPlans, setMemberMeals as fbSetMemberMeals,
   savePushToken, updateMemberDoc,
 } from '../utils/firebase';
@@ -293,6 +293,14 @@ export function AppProvider({ children }) {
     }
   }
 
+  async function deleteFamilyMember(memberId) {
+    if (isSynced && familyId) {
+      await fbDeleteFamilyMember(familyId, memberId);
+    } else {
+      await saveLocalFamily(family.filter(m => m.id !== memberId));
+    }
+  }
+
   async function addFamilyMember(name, role = 'telegram_user') {
     // app_user (full dashboard) shares parent orange (-1); telegram_user gets a rotating colour.
     const colorIndex = role === 'telegram_user'
@@ -385,7 +393,7 @@ export function AppProvider({ children }) {
       authUser, familyId, isSynced, isPro, loaded,
       family, currentUser, switchUser, updateCurrentUserName,
       requests, addRequest, updateRequestStatus, deleteRequest,
-      addFamilyMember, getTodayRequests, getPendingBuyRequests,
+      addFamilyMember, deleteFamilyMember, getTodayRequests, getPendingBuyRequests,
       mealPlans, setMealDay,
       favouritePlaces, addFavouritePlace, removeFavouritePlace,
     }}>
