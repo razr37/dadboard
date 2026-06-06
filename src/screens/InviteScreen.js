@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   Clipboard, Alert, Linking, ActivityIndicator,
+  Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -44,20 +45,48 @@ export default function InviteScreen({ navigation }) {
   const [generatingTelegram, setGeneratingTelegram] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
 
+  // PIN prompt state
+  const [pinState, setPinState] = useState({ visible: false, resolve: null });
+  const [pinValue, setPinValue] = useState('');
+
+  function promptForPin() {
+    return new Promise(resolve => {
+      setPinValue('');
+      setPinState({ visible: true, resolve });
+    });
+  }
+
+  function handlePinConfirm() {
+    const pin = pinValue.trim();
+    const { resolve } = pinState;
+    setPinState({ visible: false, resolve: null });
+    setPinValue('');
+    resolve(pin.length === 4 ? pin : null);
+  }
+
+  function handlePinSkip() {
+    const { resolve } = pinState;
+    setPinState({ visible: false, resolve: null });
+    setPinValue('');
+    resolve(null);
+  }
+
   function patchMember(id, patch) {
     setMemberInvites(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   }
 
   async function generateMemberToken(member) {
+    let pin = null;
+    if (member.role === 'telegram_user') {
+      pin = await promptForPin();
+    }
     patchMember(member.id, { generating: true });
     try {
       let token, link;
       if (member.role === 'telegram_user') {
-        // Telegram users don't install the app — give them a t.me bot link
-        token = await generateTelegramInvite(familyId, auth.currentUser?.uid);
+        token = await generateTelegramInvite(familyId, auth.currentUser?.uid, pin);
         link = `https://t.me/${TELEGRAM_BOT}?start=${token}`;
       } else {
-        // App users (app_user) get a dadboard:// magic link
         token = await generateMemberInvite(
           familyId, member.id, member.role, member.name, member.colorIndex
         );
@@ -66,6 +95,7 @@ export default function InviteScreen({ navigation }) {
       patchMember(member.id, {
         token,
         link,
+        pin,
         expiry: new Date(Date.now() + 48 * 60 * 60 * 1000),
         generating: false,
         copied: false,
@@ -82,12 +112,16 @@ export default function InviteScreen({ navigation }) {
     setTimeout(() => patchMember(member.id, { copied: false }), 2500);
   }
 
+  const [telegramPin, setTelegramPin] = useState(null);
+
   async function generateTelegramToken() {
     if (!familyId || !auth.currentUser?.uid) return;
+    const pin = await promptForPin();
     setGeneratingTelegram(true);
     try {
-      const token = await generateTelegramInvite(familyId, auth.currentUser.uid);
+      const token = await generateTelegramInvite(familyId, auth.currentUser.uid, pin);
       setTelegramToken(token);
+      setTelegramPin(pin);
       setTelegramExpiry(new Date(Date.now() + 48 * 60 * 60 * 1000));
     } catch {
       Alert.alert('Error', 'Could not generate Telegram invite link. Please try again.');
@@ -129,6 +163,42 @@ export default function InviteScreen({ navigation }) {
     <View style={styles.container}>
       <Header onBack={() => navigation.goBack()} />
 
+      <Modal transparent visible={pinState.visible} animationType="fade" onRequestClose={handlePinSkip}>
+        <KeyboardAvoidingView
+          style={styles.pinOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.pinCard}>
+            <Text style={styles.pinTitle}>Set a 4-digit PIN</Text>
+            <Text style={styles.pinSubtitle}>
+              Optional extra security. Share the PIN separately — the family member will need it to connect.
+            </Text>
+            <TextInput
+              style={styles.pinInput}
+              value={pinValue}
+              onChangeText={v => setPinValue(v.replace(/[^0-9]/g, '').slice(0, 4))}
+              keyboardType="numeric"
+              maxLength={4}
+              placeholder="1234"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+            />
+            <View style={styles.pinActions}>
+              <TouchableOpacity style={styles.pinSkipBtn} onPress={handlePinSkip}>
+                <Text style={styles.pinSkipText}>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pinConfirmBtn, pinValue.length !== 4 && { opacity: 0.4 }]}
+                onPress={handlePinConfirm}
+                disabled={pinValue.length !== 4}
+              >
+                <Text style={styles.pinConfirmText}>Set PIN</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
         {/* ── Per-member magic links ───────────────────────────────────────── */}
@@ -146,9 +216,10 @@ export default function InviteScreen({ navigation }) {
             {invitableMembers.map(member => {
               const invite = memberInvites[member.id] || {};
               const deepLink = invite.link || null;
+              const pinNote = invite.pin ? `\n\nYour PIN is: ${invite.pin} — you'll need this to connect.` : '';
               const waMessage = deepLink
                 ? member.role === 'telegram_user'
-                  ? `Message @${TELEGRAM_BOT} on Telegram to join the family:\n${deepLink}\n\n(Link expires in 48 hours)`
+                  ? `Message @${TELEGRAM_BOT} on Telegram to join the family:\n${deepLink}${pinNote}\n\n(Link expires in 48 hours)`
                   : `${member.name} has been added to your Dadboard family! 🎉\n\n` +
                     `Install the app: ${PLAY_STORE_URL}\n\n` +
                     `Then tap this link to join: ${deepLink}\n\n(Link expires in 48 hours)`
@@ -273,10 +344,13 @@ export default function InviteScreen({ navigation }) {
 
                 <TouchableOpacity
                   style={styles.whatsappBtn}
-                  onPress={() => handleWhatsApp(
-                    `Join my Dadboard family! Message @${TELEGRAM_BOT} on Telegram with this link: ` +
-                    `t.me/${TELEGRAM_BOT}?start=${telegramToken} (expires in 48 hours)`
-                  )}
+                  onPress={() => {
+                    const pinNote = telegramPin ? `\n\nYour PIN is: ${telegramPin} — you'll need this to connect.` : '';
+                    handleWhatsApp(
+                      `Join my Dadboard family! Message @${TELEGRAM_BOT} on Telegram with this link: ` +
+                      `t.me/${TELEGRAM_BOT}?start=${telegramToken}${pinNote} (expires in 48 hours)`
+                    );
+                  }}
                 >
                   <Ionicons name="logo-whatsapp" size={18} color={colors.white} />
                   <Text style={styles.whatsappBtnText}>Share via WhatsApp</Text>
@@ -475,4 +549,34 @@ const styles = StyleSheet.create({
     ...typography.bodySmall, color: colors.textSecondary,
     textAlign: 'center', lineHeight: 20,
   },
+
+  // ── PIN modal ──────────────────────────────────────────────────────────────
+  pinOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  pinCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.lg,
+    padding: spacing.xl, width: '100%',
+  },
+  pinTitle: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.sm },
+  pinSubtitle: {
+    ...typography.bodySmall, color: colors.textSecondary,
+    lineHeight: 20, marginBottom: spacing.lg,
+  },
+  pinInput: {
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md,
+    fontSize: 28, fontWeight: '700', color: colors.textPrimary,
+    textAlign: 'center', letterSpacing: 8, marginBottom: spacing.lg,
+  },
+  pinActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  pinSkipBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  pinSkipText: { fontSize: 14, color: colors.textSecondary },
+  pinConfirmBtn: {
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.sm,
+    backgroundColor: colors.primary, borderRadius: radius.md,
+  },
+  pinConfirmText: { fontSize: 14, color: colors.white, fontWeight: '700' },
 });

@@ -1,6 +1,6 @@
 // src/screens/SwitchUserScreen.js
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking, Clipboard } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert, Linking, Clipboard, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { generateMemberInvite, generateTelegramInvite, auth } from '../utils/firebase';
@@ -28,6 +28,30 @@ export default function SwitchUserScreen({ navigation }) {
   const [newName, setNewName] = useState('');
   const [selectedRole, setSelectedRole] = useState('telegram_user');
   const [adding, setAdding] = useState(false);
+  const [pinState, setPinState] = useState({ visible: false, resolve: null });
+  const [pinValue, setPinValue] = useState('');
+
+  function promptForPin() {
+    return new Promise(resolve => {
+      setPinValue('');
+      setPinState({ visible: true, resolve });
+    });
+  }
+
+  function handlePinConfirm() {
+    const pin = pinValue.trim();
+    const { resolve } = pinState;
+    setPinState({ visible: false, resolve: null });
+    setPinValue('');
+    resolve(pin.length === 4 ? pin : null);
+  }
+
+  function handlePinSkip() {
+    const { resolve } = pinState;
+    setPinState({ visible: false, resolve: null });
+    setPinValue('');
+    resolve(null);
+  }
 
   function handleSwitch(member) {
     // goBack() must fire before switchUser() changes currentUser.role.
@@ -72,9 +96,11 @@ export default function SwitchUserScreen({ navigation }) {
       const isTelegram = member.role === 'telegram_user';
       let shareLink, waMessage;
       if (isTelegram) {
-        const token = await generateTelegramInvite(familyId, auth.currentUser?.uid);
+        const pin = await promptForPin();
+        const token = await generateTelegramInvite(familyId, auth.currentUser?.uid, pin);
         shareLink = `https://t.me/DadboardBot?start=${token}`;
-        waMessage = `${member.name} has been added to your Dadboard family! 🎉\n\nTap this link to connect via Telegram:\n${shareLink}\n\n(Link expires in 48 hours)`;
+        const pinNote = pin ? `\n\nYour PIN is: ${pin} — you'll need this to connect.` : '';
+        waMessage = `${member.name} has been added to your Dadboard family! 🎉\n\nTap this link to connect via Telegram:\n${shareLink}${pinNote}\n\n(Link expires in 48 hours)`;
       } else {
         const token = await generateMemberInvite(familyId, member.id, member.role, member.name, member.colorIndex);
         shareLink = `dadboard://join?invite=${token}`;
@@ -153,6 +179,42 @@ export default function SwitchUserScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <Modal transparent visible={pinState.visible} animationType="fade" onRequestClose={handlePinSkip}>
+        <KeyboardAvoidingView
+          style={styles.pinOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.pinCard}>
+            <Text style={styles.pinTitle}>Set a 4-digit PIN</Text>
+            <Text style={styles.pinSubtitle}>
+              Optional extra security. Share the PIN separately — the family member will need it to connect.
+            </Text>
+            <TextInput
+              style={styles.pinInput}
+              value={pinValue}
+              onChangeText={v => setPinValue(v.replace(/[^0-9]/g, '').slice(0, 4))}
+              keyboardType="numeric"
+              maxLength={4}
+              placeholder="1234"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+            />
+            <View style={styles.pinActions}>
+              <TouchableOpacity style={styles.pinSkipBtn} onPress={handlePinSkip}>
+                <Text style={styles.pinSkipText}>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pinConfirmBtn, pinValue.length !== 4 && { opacity: 0.4 }]}
+                onPress={handlePinConfirm}
+                disabled={pinValue.length !== 4}
+              >
+                <Text style={styles.pinConfirmText}>Set PIN</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.canGoBack() && navigation.goBack()} style={styles.closeBtn}>
           <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -373,4 +435,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted, borderRadius: radius.md,
   },
   tipText: { ...typography.caption, color: colors.textSecondary, flex: 1, lineHeight: 18 },
+
+  // ── PIN modal ──────────────────────────────────────────────────────────────
+  pinOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  pinCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.lg,
+    padding: spacing.xl, width: '100%',
+  },
+  pinTitle: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.sm },
+  pinSubtitle: {
+    ...typography.bodySmall, color: colors.textSecondary,
+    lineHeight: 20, marginBottom: spacing.lg,
+  },
+  pinInput: {
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md,
+    fontSize: 28, fontWeight: '700', color: colors.textPrimary,
+    textAlign: 'center', letterSpacing: 8, marginBottom: spacing.lg,
+  },
+  pinActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  pinSkipBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  pinSkipText: { fontSize: 14, color: colors.textSecondary },
+  pinConfirmBtn: {
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.sm,
+    backgroundColor: colors.primary, borderRadius: radius.md,
+  },
+  pinConfirmText: { fontSize: 14, color: colors.white, fontWeight: '700' },
 });

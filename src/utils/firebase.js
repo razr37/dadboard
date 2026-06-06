@@ -213,20 +213,33 @@ export async function joinFamily(familyId, memberName, role = 'telegram_user') {
 
 // ─── Telegram invite tokens ───────────────────────────────────────────────────
 
-export async function generateTelegramInvite(familyId, uid) {
+// djb2xor hash — identical logic in server.js; must stay in sync
+function hashPin(pin) {
+  const str = `dadboard-pin-${pin}`;
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+export async function generateTelegramInvite(familyId, uid, pin = null) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const token = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 48);
 
-  await setDoc(doc(db, 'invites', token), {
+  const inviteData = {
     familyId,
     createdBy: uid,
     createdAt: serverTimestamp(),
     expiresAt: Timestamp.fromDate(expiresAt),
     used: false,
-  });
+  };
+  if (pin) inviteData.pin = hashPin(pin);
+
+  await setDoc(doc(db, 'invites', token), inviteData);
 
   return token;
 }
