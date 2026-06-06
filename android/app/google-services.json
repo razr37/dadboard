@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "382739338353",
+    "project_id": "dadboard-app",
+    "storage_bucket": "dadboard-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382739338353:android:ac6c17525e6dcf29f977d0",
+        "android_client_info": {
+          "package_name": "com.dadboard.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382739338353-211i25ouiamjshg2f0bpi2c99if01o23.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dadboard.app",
+            "certificate_hash": "8ef146defb6c197af10766828288ff632a563bec"
+          }
+        },
+        {
+          "client_id": "382739338353-7nbkslk96dq28j51ae4ns1bt0jb9h8g9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVXgm0Eu1s3E3ZshjoukpXM3rGCC4hqM0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382739338353-7nbkslk96dq28j51ae4ns1bt0jb9h8g9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

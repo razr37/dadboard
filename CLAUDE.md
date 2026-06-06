@@ -42,7 +42,8 @@ Every public method on `AppContext` routes to the right backend automatically vi
 | `addRequest(req)` | Create a pickup / buy / other request |
 | `updateRequestStatus(id, status)` | Cycle status: `pending` → `onway` → `done` |
 | `deleteRequest(id)` | Remove a request |
-| `addFamilyMember(name, role)` | Add a member; `role` is `'kid'` (default), `'spouse'`, or `'adult'`. Kids get a rotating `colorIndex` (0–4); adults get `-1` (parent orange). |
+| `addFamilyMember(name, role)` | Add a member; `role` is `'telegram_user'` (default) or `'app_user'`. `telegram_user` gets a rotating `colorIndex` (0–4); `app_user` gets `-1` (parent orange). |
+| `deleteFamilyMember(memberId)` | Remove a member — Firestore `deleteDoc` in sync mode, local array filter in guest mode |
 | `switchUser(user)` | Change active profile (persisted to AsyncStorage in both modes) |
 | `updateCurrentUserName(name)` | Update the current user's display name — Firestore member doc (sync) or local family array (guest) + AsyncStorage |
 | `setMealDay(memberId, date, {lunch, dinner})` | Toggle meal presence for a member; optimistic update in both modes |
@@ -58,7 +59,9 @@ import { getFirestore, doc, ... } from 'firebase/firestore';
 import { initializeAuth, ... } from 'firebase/auth';
 ```
 
-All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `deleteAllFamilyData` (GDPR/PDPA right to erasure), `generateMemberInvite` (Dad creates magic-link token for a family member), `redeemMemberInvite` (member taps link → anonymous sign-in + user doc write).
+All Firebase service calls live in `src/utils/firebase.js`. Add new Firestore/Auth helpers there, not inline in components. Notable helpers beyond CRUD: `upgradeAnonymousToEmail` (links anonymous account to email), `deleteAllFamilyData` (GDPR/PDPA right to erasure), `generateMemberInvite` (Dad creates magic-link token for a family member), `redeemMemberInvite` (member taps link → anonymous sign-in + user doc write), `deleteFamilyMember` (removes a member doc), `signInWithGoogle` (Google OAuth → `signInWithCredential` → returns `{user, isNewUser}`).
+
+**Google Sign-In**: `@react-native-google-signin/google-signin` v16 is installed. `GoogleSignin.configure({ webClientId })` is called at module scope in `App.js`. `signInWithGoogle()` in `firebase.js` calls `GoogleSignin.signIn()`, wraps the `idToken` in `GoogleAuthProvider.credential`, and calls `signInWithCredential`. Returns `null` if the user cancelled. New users get `createFamily(displayName)` called automatically in `handleGoogleSignIn` in `AuthScreen.js`. Existing users go straight to the app via `onAuthStateChanged`.
 
 **`subscribeToFamilyId(uid, callback)`** — real-time `onSnapshot` on `/users/{uid}`. Callback signature: `callback(familyId, memberId)` — both strings or null. `memberId` is set when the user doc was written by `redeemMemberInvite`, pointing to the member slot Dad pre-created. AppContext uses it to select the correct `currentUser` after a magic-link join. Also handles the `createFamily()` batch race condition (new-account sign-up). **Do not revert this to a one-shot `getDoc` call.**
 
@@ -89,6 +92,20 @@ else       → AppProvider + NavigationContainer + AppNavigator
 
 **Splash screen**: `SplashScreen.hideAsync()` is called at module scope so the native splash dismisses as soon as the JS bundle loads. `app.json` sets `splash.backgroundColor` to `#F07C2A`. Do not add `SplashScreen.preventAutoHideAsync()` or the splash will hang.
 
+### AsyncStorage keys
+
+| Key | Value | Notes |
+|---|---|---|
+| `dadboard_consented` | `'yes'` | Preserved on sign-out; cleared only by `AsyncStorage.clear()` (account deletion) |
+| `dadboard_current_user` | JSON | Active profile selection |
+| `dadboard_family` | JSON | Guest-mode family array |
+| `dadboard_requests` | JSON | Guest-mode requests array |
+| `dadboard_meal_plans` | JSON | Guest-mode meal plans |
+| `dadboard_favourite_places` | JSON | Pickup location suggestions |
+| `dadboard_setup_complete` | `'yes'` | Written once; never cleared — not part of `AsyncStorage.clear()` on account deletion (intentional) |
+
+Sign-out uses `AsyncStorage.multiRemove(SIGN_OUT_CLEAR_KEYS)` (all keys except `dadboard_consented`) so the consent gate isn't re-shown after signing back in. Account deletion uses `AsyncStorage.clear()` for full erasure.
+
 ### Navigation
 
 Two role-based navigators sit inside a root `Stack.Navigator`:
@@ -96,13 +113,15 @@ Two role-based navigators sit inside a root `Stack.Navigator`:
 - `DadTabs` (Tab.Navigator) — Today / Schedule / Shopping / Meals
 - `KidMain` (Stack.Navigator) — KidHomeScreen only, **no tab bar** (single screen needs no tabs)
 
-`isParent` (App.js) is `true` for roles `'parent'`, `'spouse'`, and `'adult'` — all three get `DadTabs`. Only `'kid'` gets `KidMain`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth, Settings, ProUpgrade) are pushed onto the root stack and accessible from either navigator.
+`isParent` (App.js) is `true` for roles `'parent'` and `'app_user'` — both get `DadTabs`. Only `'telegram_user'` gets `KidMain`. Modal screens (AddRequest, SwitchUser, Invite, PrivacySettings, Auth, Settings, ProUpgrade) are pushed onto the root stack and accessible from either navigator.
 
-**Role-based access**: Settings, Privacy, Invite, and Manage Members have no entry points in `KidHomeScreen` — kids only navigate to `AddRequest` and `SwitchUser`. The routes are registered for all users but no kid-visible button calls them.
+**Role system**: three roles in use — `'parent'` (Dad, full access, orange), `'app_user'` (full dashboard, orange, joins via `dadboard://` magic link), `'telegram_user'` (simplified view, rotating colour, interacts via Telegram bot). `isParent()` in `firestore.rules` covers `['parent', 'app_user']`. `isValidMember()` covers `['parent', 'telegram_user', 'app_user']`.
 
-**`currentUser` ≠ `authUser`**: `authUser` is the Firebase Auth session (always the parent on the parent's device). `currentUser` is the active family profile — a parent can switch to a kid's profile via `SwitchUserScreen` to add requests on their behalf.
+**`currentUser` ≠ `authUser`**: `authUser` is the Firebase Auth session (always the parent on the parent's device). `currentUser` is the active family profile — a parent can switch to a Telegram User's profile via `SwitchUserScreen` to add requests on their behalf.
 
-**SwitchUserScreen navigation gotcha**: `navigation.goBack()` must be called *before* `switchUser()`. A role change (`parent`↔`kid`) causes `AppNavigator` to swap the entire stack, detaching the modal's navigation context. Calling `goBack()` after the role state update has no effect.
+**SwitchUserScreen navigation gotcha**: `navigation.goBack()` must be called *before* `switchUser()`. A role change (`parent`/`app_user` ↔ `telegram_user`) causes `AppNavigator` to swap the entire stack, detaching the modal's navigation context. Calling `goBack()` after the role state update has no effect.
+
+**SwitchUserScreen delete member**: each `MemberCard` shows a trash icon (`canDelete`) unless the card belongs to the Firebase auth account holder (`member.uid === authUser.uid` or `member.id === authUser.uid`). Tapping the icon shows a single-confirm Alert then calls `deleteFamilyMember(member.id)`. The delete icon is also hidden when the card is the currently active profile (`isActive`). Adding a new member immediately prompts to send an invite (WhatsApp or Copy link), with the link type determined by role: `telegram_user` → `t.me/DadboardBot?start=TOKEN`, `app_user` → `dadboard://join?invite=TOKEN`.
 
 ### Consent gate (ConsentScreen.js)
 
@@ -136,22 +155,24 @@ Shown once after first auth. Records `dadboard_consent_v1` to AsyncStorage. EU/E
                                        Both: 8-char token, 48hr TTL, one-time use. Presence of memberId distinguishes type.
 ```
 
-Request types: `pickup` (has `date`, `time`, `location`, `dropTo`), `buy` (has `item`, `urgency`), `other` (has `message`, `urgency`).
+Request types: `pickup` (has `date`, `time`, `from`, `to`, `activity`), `buy` (has `item`, `urgency`), `other` (has `message`, `urgency`).
 Status cycle: `pending` → `onway` → `done` (tap on DadHomeScreen cycles through).
 
 Kids on a shared parent device are created with `isLocalProfile: true` and a synthetic `uid` (doc ID) — they have no Firebase Auth account of their own.
 
 Security rules are in `firebase/firestore.rules`. Non-anonymous auth is required for all family data. Kids can only create requests with their own `fromId`; parents have elevated permissions.
 
-**`isParent()` in rules covers `'parent'`, `'spouse'`, and `'adult'`** — matches the app-level `isParent` check in `App.js`. If you add new adult roles, update this function in the rules too or those roles will be denied write access. Deploy with `firebase deploy --only firestore:rules` after any rules change.
+**`isParent()` in rules covers `'parent'` and `'app_user'`** — matches the app-level `isParent` check in `App.js`. If you add new elevated roles, update this function in the rules too or those roles will be denied write access. Deploy with `firebase deploy --only firestore:rules` after any rules change.
 
 ### Invite flow
 
 There are now **two separate invite mechanisms** — keep them distinct:
 
-**1. Telegram bot** (Pro feature, `InviteScreen.js`) — `https://t.me/DadboardBot?start={token}`. `generateTelegramInvite(familyId, uid)` creates an 8-char token in `/invites/{token}` with a 48hr expiry. The bot validates and marks used. Token shape: `{ familyId, createdBy, expiresAt, used }`.
+**1. Telegram bot** (Pro feature, `InviteScreen.js`) — `https://t.me/DadboardBot?start={token}`. `generateTelegramInvite(familyId, uid, pin?)` creates an 8-char token in `/invites/{token}` with a 48hr expiry. The bot validates and marks used. Token shape: `{ familyId, createdBy, expiresAt, used, pin? }` — `pin` is a djb2xor hash of the 4-digit PIN if Dad set one.
 
 **2. Member magic link** (all families, `SwitchUserScreen.js`) — `dadboard://join?invite={token}`. Dad adds a member (name + role) → `addFamilyMember` creates the member doc → `generateMemberInvite` creates a token → Alert offers "Send via WhatsApp" and "Copy link". Token shape: `{ familyId, memberId, role, name, colorIndex, expiresAt, used }`. When the link is tapped on the member's phone, `redeemMemberInvite(token)` in App.js Phase 1 boot: validates token, calls `signInAnonymously`, writes `/users/{anon_uid}` with `{ familyId, role, name, memberId }`, marks invite used. AppContext then finds `memberId` in the user doc and selects the correct family member as `currentUser`. **No login screen shown — the member lands directly on their home screen.**
+
+**PIN verification** (optional, Telegram invites only): when generating a Telegram invite token, Dad is shown a `Modal` + `TextInput` PIN prompt (or can Skip). If a PIN is set, a djb2xor hash is stored as `invite.pin`; the plain PIN is included in the WhatsApp share message. In the bot, `pendingPinVerification` (in-memory `Map`, keyed by `chatId`) tracks users mid-verification; 3 wrong attempts invalidates the invite with `used: true`. **`hashPin()` in `src/utils/firebase.js` and `~/dadboard-bot/server.js` must stay byte-for-byte identical** — divergence permanently locks out any user with a pending PIN invite.
 
 **Deep link config**: `app.json` has `"scheme": "dadboard"` at the expo root — Expo `prebuild` auto-generates the Android intent filter for `dadboard://` from this. `parseMemberToken(url)` in App.js extracts `?invite=` from any URL scheme via regex, handling both `dadboard://` and HTTPS fallback. To test: copy a `dadboard://join?invite=TOKEN` link and open it in Chrome on Android — it will prompt to open Dadboard.
 
@@ -163,13 +184,23 @@ Separate Node.js/Express project (not inside this repo). Receives Telegram webho
 
 **Request flow**: message text → Claude Haiku via `parseMessage()` → `saveRequest(familyId, {...parsed, fromName, rawMessage})` → `families/{familyId}/requests`.
 
-**Bot-written request fields**: `type`, `date`, `time`, `location`, `activity`, `item`, `urgency`, `fromName`, `rawMessage`, `createdAt`. Notably **absent**: `status` and `fromId` (Admin SDK skips rules that require them). `subscribeToRequests` in `firebase.js` defaults both: `status: data.status ?? 'pending'`, `fromId: data.fromId ?? ''`. Do not remove these defaults.
+**Bot-written request fields**: `type`, `date`, `time`, `from`, `to`, `activity`, `item`, `urgency`, `fromName`, `rawMessage`, `createdAt`. `from` = pickup origin (defaults to `"Home"`); `to` = destination. Notably **absent**: `status` and `fromId` (Admin SDK skips rules that require them). `subscribeToRequests` in `firebase.js` defaults both: `status: data.status ?? 'pending'`, `fromId: data.fromId ?? ''`. Do not remove these defaults.
+
+**`parser.js` `BASE_PROMPT`**: instructs Claude Haiku on the `from`/`to` distinction. `"Next [weekday]"` always means the following week. Urgency defaults to `medium`. System prompt is rebuilt on every call with today's SGT date via `buildSystemPrompt()` — a static prompt causes the model to use its training cutoff for relative dates like "tomorrow".
 
 **Date parsing**: `parser.js` builds its system prompt dynamically via `buildSystemPrompt()`, injecting today's date in SGT (`Asia/Singapore` timezone) on every call. This is critical — a static prompt causes the model to use its training cutoff date for relative terms like "tomorrow".
 
+**Bot file layout**:
+- `server.js` — Express + webhook handler, PIN verification (`pendingPinVerification` Map), cancel disambiguation
+- `firebase.js` — Admin SDK helpers: `getTelegramUser`, `registerTelegramUser`, `saveRequest`, `deleteRequest`, `setPendingCancel`, `clearPendingCancel`, `getPendingCancel`
+- `parser.js` — `parseMessage(text)` via Claude Haiku, `buildSystemPrompt()` injects today's SGT date
+- `render.yaml` — Render.com deployment config; bot is deployed there, kept alive with a self-ping every 14 minutes
+
+`pendingPinVerification` is an in-memory `Map` — it is lost on bot restart. Users mid-PIN-entry after a restart will need Dad to regenerate the invite.
+
 ### AuthScreen.js — Dad-only auth
 
-AuthScreen is **for Dad only**. Kids and spouse join via magic link; they never see this screen. Uses a `screen` state (`'welcome' | 'parent' | 'signin'`).
+AuthScreen is **for Dad only**. `telegram_user` and `app_user` members join via magic link; they never see this screen. Uses a `screen` state (`'welcome' | 'parent' | 'signin'`).
 
 - **`'welcome'`** — two `IntentCard` components: "Set up as Dad / Parent" → `'parent'`; "Sign in" → `'signin'`. Hint text explains that family members join via invite link.
 - **`'parent'`** — name + email + password (show/hide toggle) → `createEmailAccount` then `createFamily`. `auth/email-already-in-use` navigates to `'signin'` with email pre-filled; create password is **never** copied to the sign-in password field.
@@ -201,7 +232,7 @@ function toLocalDateStr(date) {
 }
 ```
 
-Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week starts. `MealsScreen`, `KidHomeScreen`, and `AppContext.getWeekStartDate` all use this pattern — keep them consistent or Firestore meal plan keys will diverge between what kids write and what Dad reads.
+Use `date-fns` `startOfWeek(date, { weekStartsOn: 1 })` for Monday-anchored week starts. `MealsScreen`, `KidHomeScreen`, and `AppContext.getWeekStartDate` all use this pattern — keep them consistent or Firestore meal plan keys will diverge between what family members write and what Dad reads.
 
 ### Meal plan navigation — two-week view
 
@@ -209,7 +240,7 @@ Both `MealsScreen` (Dad) and `KidHomeScreen` (`MealsThisWeek` component) use a `
 
 - Left arrow disabled at offset 0; right arrow disabled at offset 1 — hard ceiling of two weeks
 - Kids can pre-plan Sunday evening for the coming week without waiting for Monday
-- Dad's view and kid's view always reference the same Firestore keys for the same calendar week
+- Dad's view and family members' views always reference the same Firestore keys for the same calendar week
 
 ### Delete account (PrivacySettingsScreen.js)
 
@@ -254,55 +285,32 @@ Currently gated behind Pro:
 
 All UI primitives are in `src/utils/theme.js`: `colors`, `spacing`, `radius`, `typography`, `shadow`. Reusable components (`Avatar`, `StatusBadge`, `Card`, `PrimaryButton`, etc.) are in `src/components/UI.js`. Always use theme tokens, never hardcode colors or sizes.
 
-The `kids` color array in theme maps `colorIndex` (0–4) to a kid's color throughout the app. `colorIndex: -1` is Dad (uses `primary` orange).
+The `kids` color array in theme maps `colorIndex` (0–4) to a `telegram_user`'s colour throughout the app. `colorIndex: -1` is used by `parent` and `app_user` (renders as `primary` orange).
 
 ### Pending tasks
 
-**Firebase setup (manual steps in console)**
-- [ ] Enable Firebase Auth — Sign-in methods: Email/Password + Anonymous
+**Firebase Console (manual)**
+- [ ] Enable Auth — Sign-in methods: Email/Password + Anonymous
 - [ ] Enable Firestore — region `asia-southeast1`
-- [ ] Deploy security rules: `firebase deploy --only firestore:rules` (rules file is complete at `firebase/firestore.rules`)
+- [ ] Deploy security rules: `firebase deploy --only firestore:rules`
 
-**Play Store prep**
-- [x] Set up EAS — `eas.json` created with development/preview/production profiles; `app.json` updated with icon path, `googleServicesFile`, `adaptiveIcon`, notification plugin, and permissions
-- [x] Create app icon 512×512px and feature graphic 1024×500px — `generate_assets.py` generates both; run `python3 generate_assets.py` once to produce `assets/icon.png` and `assets/feature-graphic.png`
-- [x] Account deletion — PrivacySettingsScreen "Delete account & all data" deletes Firestore data + Auth account + local storage (Play Store policy requirement)
-- [x] EAS project ID set — `e53c6155-f61e-4b83-afa2-6dd50e2054af` in `app.json` → `extra.eas.projectId`
+**Play Store**
 - [ ] Host privacy policy on GitHub Pages (`dadboard.app/privacy`)
-- [ ] After domain is live: set `intentFilters[0].autoVerify: true` in `app.json` and host `/.well-known/assetlinks.json` for direct deep link opening
+- [ ] After domain live: set `intentFilters[0].autoVerify: true` in `app.json` + host `/.well-known/assetlinks.json` for verified deep links
 - [ ] Generate signed AAB: `eas build --platform android --profile production`
 
-**V2 features (post-launch)**
-- [ ] **Google Sign-In** — add as primary auth for Dad on welcome screen. Install: `npx expo install expo-auth-session expo-web-browser @react-native-google-signin/google-signin`. Enable Google provider in Firebase Console → Auth → Sign-in method. Add SHA-1 fingerprint (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1`). Use `GoogleSignin.signIn()` → `signInWithCredential(auth, GoogleAuthProvider.credential(idToken))` → `createFamily`. Keep email/password as fallback. Benefit: no password, no fictitious emails, one-tap on Android.
-- [ ] **Apple Sign-In** — add when iOS launched.
+**Post-launch**
+- [ ] Apple Sign-In (when iOS launched)
 
 ---
 
-## Mandatory pre-session checklist
-Run this audit BEFORE doing anything else in every new session:
+## Environment checks
 
+Before building: Node 18+, 5 GB free disk, `android/app/google-services.json` present. After any `prebuild --clean`, copy it back:
 ```bash
-# 1. Node version (need 18+)
-node --version
-
-# 2. Disk space (need 5GB+ free)
-df -h | grep disk1s1
-
-# 3. Write access to working directory
-echo "test" > ~/Dadboard-work/write-test.txt && echo "✓ Write access OK" && rm ~/Dadboard-work/write-test.txt || echo "✗ Write access BLOCKED - use ~/Dadboard-work not ~/Documents"
-
-# 4. Expo SDK alignment
-cat node_modules/expo/package.json | grep '"version"' | head -1
-npx expo install --fix --check
-
-# 5. Required files exist
-ls android/app/google-services.json && echo "✓ google-services.json OK" || echo "✗ MISSING - copy from ~/Documents/Dadboard/android/app/"
-ls assets/icon.png && echo "✓ icon.png OK" || echo "✗ MISSING"
-ls assets/feature-graphic.png && echo "✓ feature-graphic.png OK" || echo "✗ MISSING"
-
-# 6. Firebase packages aligned
-cat node_modules/firebase/package.json | grep '"version"' | head -1
+cp ~/Documents/Dadboard/android/app/google-services.json ~/Dadboard-work/android/app/google-services.json
 ```
+Working directory is `~/Dadboard-work` — `~/Documents/Dadboard` has ACL restrictions.
 
 ## Before every production build checklist
 Run these checks BEFORE building to avoid wasted build time:
@@ -342,63 +350,6 @@ Run all 5 checks, fix any issues, THEN build.
 - If build fails, check logs at: https://expo.dev/accounts/razr73/projects/dadboard/builds
 - Firestore `requests` collection uses `orderBy('createdAt', 'desc')` — a composite index on that field is required (see `firebase/FIREBASE_SETUP.md` Step 6)
 - `@react-native-community/datetimepicker` is a native module — requires `expo prebuild` + a fresh native build after adding it
-
-## Known issues resolved
-- Consent screen shown again after sign-out — `AsyncStorage.clear()` in `handleSignOut` wiped `dadboard_consented`; replaced with `AsyncStorage.multiRemove(SIGN_OUT_CLEAR_KEYS)` which preserves consent. Account deletion still uses `clear()` (correct for full erasure). Debug logging added to `onAuthStateChanged` in App.js — check Metro for `[Auth] dadboard_consented: yes` after sign-out + sign-in.
-- Splash screen blue/green flash — Expo's `colors.xml` template sets `colorPrimary` to dark blue; `withOrangeColors` plugin now also writes `colorPrimary` and `colorPrimaryDark` so they survive every `prebuild --clean`.
-- SwitchUserScreen: tapping a member did not navigate back — `goBack()` was called after `switchUser()`, but the role change had already replaced the stack; fixed by calling `goBack()` first; all `goBack()` calls now guarded with `canGoBack()`
-- SwitchUserScreen: adding a new member appeared to do nothing — `handleAddMember` was not awaiting `addFamilyMember`, errors were swallowed silently; now async with error Alert
-- Firestore "Missing or insufficient permissions" when adding members — `isParent()` in security rules only checked `role == 'parent'`; `isValidMember()` only allowed `['parent', 'kid']`; both updated to include `'spouse'` and `'adult'`
-- AuthScreen: create-account password bled into sign-in flow — `password` state was shared; resolved by giving each screen (`'parent'`, `'signin'`) fully independent email/password state with no cross-screen sharing
-- ConsentScreen: "I agree" tapped but nothing happened — `onAuthStateChanged` token refresh fired during `recordConsent`, called `hasConsented()` before write completed, got `false`, overwrote `consentGiven=true`; fixed with `justConsented` ref in Root
-- KidHomeScreen: crash on switching to kid profile — `currentUser.colorIndex` could be `undefined` (new kid) making array index `NaN`; fixed with `Math.max(0, currentUser?.colorIndex ?? 0) % 5`
-- PrivacySettingsScreen: "Delete all my data" used wrong `dadapp_*` AsyncStorage key names (correct prefix is `dadboard_*`), never called `deleteAllFamilyData()`, and tried `navigation.reset()` on a detached navigator after auth deletion — all fixed
-- PrivacySettingsScreen + SettingsScreen: single try/catch meant cloud failure blocked local cleanup; split into independent blocks so AsyncStorage always clears
-- MealsScreen, KidHomeScreen, AppContext: `toISOString()` UTC offset caused wrong week on SGT devices — all replaced with `toLocalDateStr()` + `date-fns startOfWeek`; kid writes and Dad reads now use the same Firestore key
-- ConsentScreen: button appeared to do nothing after tapping — `handleAccept` was fire-and-forget (no await, no loading state); now async with `accepting` spinner and `await recordConsent()` before calling `onAccept()`
-- ConsentScreen: 10-second fallback timer made button feel unresponsive — reduced to 2 seconds
-- Splash screen: green square caused by missing `resizeMode: contain` in app.json; `splashscreen_logo.png` resource reference satisfied by 1×1 transparent PNG generated by withAndroidFixes plugin
-- iconBackground color: defined in `android/app/src/main/res/values/colors.xml`
-- Duplicate Firebase classes: resolved via `configurations.all` in `android/app/build.gradle`
-- `expo-asset` and `expo-font`: must be explicitly installed for Expo 52
-- Expo SDK 51 + Firebase v20 = incompatible (Gradle plugin error)
-- ConsentScreen: `en-GB` locale falsely triggered GDPR on SG devices where `Localization.region` returns null — fixed by requiring explicit `Localization.region` for `isEU`
-- ConsentScreen: "I agree" button tapped but did nothing — `handleAccept` had no try/catch; AsyncStorage throw in `recordConsent` silently blocked `onAccept()`
-- ConsentScreen: button stayed greyed out after ticking all checkboxes — scroll threshold tightened to `-100px` and 10s fallback timer added
-- AppContext / createFamily: new-account sign-up left app stuck in guest mode — `onAuthStateChanged` in AppContext fired before `createFamily()` committed its Firestore batch; `getFamilyId()` returned null and AppContext settled into guest mode permanently; fixed by replacing the one-shot `getDoc` read with `subscribeToFamilyId()` (`onSnapshot`), which fires again when the batch lands and switches to sync mode automatically
-- AuthScreen handleCreateParent: Firestore errors from `createFamily()` were shown as "Something went wrong" — auth and family-creation errors were in one try/catch; split into separate blocks so `createFamily` errors show `e.message` / `e.code` directly
-- Build error `@drawable/notification_icon` missing — expo-notifications injects this meta-data when `"icon"` is set in its plugin config; removed the `"icon"` property from `app.json` entirely so the drawable reference is never injected; `drawable-*/` is gitignored so PNG-copy approaches do not survive `prebuild --clean`
-- DadHomeScreen `getTodayRequests`: used `toISOString().split('T')[0]` for today's date — caused SGT pickups from the Telegram bot (which writes SGT dates) to never appear on the Today tab; fixed with `toLocalDateStr(new Date())`
-
-## NEXT SESSION — Ready to commit and build
-
-All changes from this session are uncommitted. Start the next session with:
-
-```bash
-git add .
-git commit -m "Deep link scheme dadboard://, fix colorPrimary splash, consent debug logging"
-```
-
-Then build and install:
-```bash
-export ANDROID_HOME=$HOME/Library/Android/sdk
-cd ~/Dadboard-work/android && ./gradlew assembleRelease 2>&1 | tail -5
-adb install -r ~/Dadboard-work/android/app/build/outputs/apk/release/app-release.apk
-```
-
-Post-install test checklist:
-1. Sign out → sign back in → confirm **no PDPA consent screen** (check Metro logs: `[Auth] dadboard_consented: yes`)
-2. Add a kid in SwitchUserScreen → copy the `dadboard://` invite link → open in Chrome → confirm app opens and kid is auto-logged in with no login screen
-3. Confirm **no green/blue square on launch** — splash should be solid orange `#F07C2A`
-
----
-
-## Session management
-- Each Claude.ai chat session has a context limit
-- When you see "conversation compacted" notice - open a new Claude.ai chat immediately
-- Start new chat with: "I'm building Dadboard. Read ~/Dadboard-work/CLAUDE.md for full context. Current task: [describe task]"
-- CLAUDE.md is the persistent memory - keep it updated at end of every session
-- Claude Code sessions (terminal) are separate from Claude.ai chat sessions and don't have the same limit
 
 ## If starting fresh on a new machine
 ```bash
