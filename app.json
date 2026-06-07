@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dadboard",
     "slug": "dadboard",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "scheme": "dadboard",
     "icon": "./assets/icon.png",
     "splash": {
@@ -13,7 +13,7 @@
       "android"
     ],
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "compileSdkVersion": 35,
       "targetSdkVersion": 35,
       "buildToolsVersion": "35.0.0",
