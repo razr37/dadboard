@@ -1,4 +1,4 @@
-package com.dadboard.app
+package com.dadboard.family
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

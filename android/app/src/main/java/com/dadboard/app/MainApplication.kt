@@ -1,4 +1,4 @@
-package com.dadboard.app
+package com.dadboard.family
 
 import android.app.Application
 import android.content.res.Configuration

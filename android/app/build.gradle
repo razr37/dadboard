@@ -86,9 +86,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.dadboard.app'
+    namespace 'com.dadboard.family'
     defaultConfig {
-        applicationId 'com.dadboard.app'
+        applicationId 'com.dadboard.family'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2

@@ -41,6 +41,43 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382739338353:android:f2e3e8195d311801f977d0",
+        "android_client_info": {
+          "package_name": "com.dadboard.family"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382739338353-bb7lp4eaodngi6udjt2q0h7o80tqjl43.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dadboard.family",
+            "certificate_hash": "8ef146defb6c197af10766828288ff632a563bec"
+          }
+        },
+        {
+          "client_id": "382739338353-7nbkslk96dq28j51ae4ns1bt0jb9h8g9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVXgm0Eu1s3E3ZshjoukpXM3rGCC4hqM0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382739338353-7nbkslk96dq28j51ae4ns1bt0jb9h8g9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
